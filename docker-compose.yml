@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: gestao-imoveis-db
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: gestao_imoveis
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./backend/db/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+    ports:
+      - "5433:5432"
+
+  backend:
+    build: ./backend
+    container_name: gestao-imoveis-backend
+    restart: always
+    environment:
+      PORT: 3001
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/gestao_imoveis
+      JWT_SECRET: gestao_imoveis_jwt_secret_2026_super_secure
+      JWT_REFRESH_SECRET: gestao_imoveis_refresh_secret_2026_super_secure
+      JWT_EXPIRES_IN: 15m
+      JWT_REFRESH_EXPIRES_IN: 7d
+    depends_on:
+      - db
+    ports:
+      - "3001:3001"
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        - BACKEND_URL=http://backend:3001
+    container_name: gestao-imoveis-frontend
+    restart: always
+    environment:
+      BACKEND_URL: http://backend:3001
+    depends_on:
+      - backend
+    ports:
+      - "3000:3000"
+
+volumes:
+  pgdata:
