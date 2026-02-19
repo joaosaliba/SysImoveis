@@ -81,6 +81,7 @@ CREATE TABLE IF NOT EXISTS contratos (
     valor_agua NUMERIC(12, 2) DEFAULT 0,
     valor_luz NUMERIC(12, 2) DEFAULT 0,
     valor_outros NUMERIC(12, 2) DEFAULT 0,
+    desconto_pontualidade NUMERIC(12, 2) DEFAULT 0,
     status_encerrado BOOLEAN DEFAULT FALSE,
     observacoes_contrato TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),

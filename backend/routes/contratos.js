@@ -17,7 +17,13 @@ function generateParcelas(dataInicio, dataFim, valorInicial, diaVencimento, brea
     let current = new Date(start);
     let numero = 1;
 
-    const { valor_iptu = 0, valor_agua = 0, valor_luz = 0, valor_outros = 0 } = breakdown;
+    const {
+        valor_iptu = 0,
+        valor_agua = 0,
+        valor_luz = 0,
+        valor_outros = 0,
+        desconto_pontualidade = 0
+    } = breakdown;
 
     while (current < end) {
         const periodoInicio = new Date(current);
@@ -45,7 +51,7 @@ function generateParcelas(dataInicio, dataFim, valorInicial, diaVencimento, brea
             valor_agua,
             valor_luz,
             valor_outros,
-            desconto_pontualidade: 0,
+            desconto_pontualidade,
             data_vencimento: vencimento.toISOString().split('T')[0],
             status_pagamento: 'pendente',
             descricao
@@ -165,10 +171,10 @@ router.post('/:id/renovar', async (req, res) => {
     try {
         await client.query('BEGIN');
         const contratoId = req.params.id;
-        const { nova_data_fim, novo_valor, indice_reajuste, observacoes } = req.body;
+        const { nova_data_inicio, nova_data_fim, novo_valor, indice_reajuste, observacoes } = req.body;
 
-        if (!nova_data_fim || !novo_valor) {
-            return res.status(400).json({ error: 'Nova data fim e novo valor são obrigatórios.' });
+        if (!nova_data_inicio || !nova_data_fim || !novo_valor) {
+            return res.status(400).json({ error: 'Data início, data fim e novo valor são obrigatórios.' });
         }
 
         // 1. Get current contract
@@ -179,7 +185,22 @@ router.post('/:id/renovar', async (req, res) => {
         }
         const contrato = contractRes.rows[0];
 
-        // 2. Insert into history
+        // 2. Overlap Validation
+        // A new period [nova_data_inicio, nova_data_fim] cannot overlap with segments of the same contract
+        // Historically, we only track the *current* period in `contratos`. 
+        // We should check if nova_data_inicio is AFTER the current end? Actually, the user might be extending it.
+        // The rule requested: "mensagem de erro caso periodo antigo se chocar com o novo"
+        const currentStart = new Date(contrato.data_inicio);
+        const currentEnd = new Date(contrato.data_fim);
+        const newStart = new Date(nova_data_inicio);
+        const newEnd = new Date(nova_data_fim);
+
+        if (newStart <= currentEnd && newEnd >= currentStart) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ error: 'O novo período de renovação se sobrepõe ao período atual do contrato.' });
+        }
+
+        // 3. Insert into history
         await client.query(
             `INSERT INTO contrato_renovacoes (
                 contrato_id, valor_anterior, valor_novo, 
@@ -188,20 +209,21 @@ router.post('/:id/renovar', async (req, res) => {
             ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
             [
                 contratoId, contrato.valor_inicial, novo_valor,
-                contrato.data_fim, nova_data_fim, // Start of new period is implicitly the old end date? Or just record the change.
+                nova_data_inicio, nova_data_fim,
                 observacoes, indice_reajuste
             ]
         );
 
-        // 3. Update contract
-        // We update data_fim to extend it. We update valor_inicial to the new rent.
+        // 4. Update contract
+        // We update data_inicio and data_fim to the new period. We update valor_inicial to the new rent.
         const updatedContract = await client.query(
             `UPDATE contratos SET 
-                data_fim = $1, 
-                valor_inicial = $2,
+                data_inicio = $1,
+                data_fim = $2, 
+                valor_inicial = $3,
                 updated_at = NOW()
-             WHERE id = $3 RETURNING *`,
-            [nova_data_fim, novo_valor, contratoId]
+             WHERE id = $4 RETURNING *`,
+            [nova_data_inicio, nova_data_fim, novo_valor, contratoId]
         );
 
         await client.query('COMMIT');
@@ -210,7 +232,7 @@ router.post('/:id/renovar', async (req, res) => {
     } catch (err) {
         await client.query('ROLLBACK');
         console.error('Renew contract error:', err);
-        res.status(500).json({ error: 'Erro ao renovar contrato.' });
+        res.status(500).json({ error: 'Erro ao renovar contrato: ' + err.message });
     } finally {
         client.release();
     }
@@ -225,7 +247,7 @@ router.post('/', async (req, res) => {
         const {
             inquilino_id, unidade_id, data_inicio, data_fim, qtd_ocupantes,
             valor_inicial, dia_vencimento, observacoes_contrato,
-            valor_iptu, valor_agua, valor_luz, valor_outros
+            valor_iptu, valor_agua, valor_luz, valor_outros, desconto_pontualidade
         } = req.body;
 
         if (!inquilino_id || !unidade_id || !data_inicio || !data_fim || !valor_inicial || !dia_vencimento) {
@@ -236,14 +258,15 @@ router.post('/', async (req, res) => {
             `INSERT INTO contratos (
                 inquilino_id, unidade_id, data_inicio, data_fim, qtd_ocupantes, 
                 valor_inicial, dia_vencimento, observacoes_contrato,
-                valor_iptu, valor_agua, valor_luz, valor_outros
+                valor_iptu, valor_agua, valor_luz, valor_outros, desconto_pontualidade
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
             RETURNING *`,
             [
                 inquilino_id, unidade_id, data_inicio, data_fim, qtd_ocupantes || 1,
                 valor_inicial, dia_vencimento, observacoes_contrato,
-                valor_iptu || 0, valor_agua || 0, valor_luz || 0, valor_outros || 0
+                valor_iptu || 0, valor_agua || 0, valor_luz || 0, valor_outros || 0,
+                desconto_pontualidade || 0
             ]
         );
 
@@ -252,7 +275,7 @@ router.post('/', async (req, res) => {
         // Auto-generate installments with breakdown
         const parcelas = generateParcelas(
             data_inicio, data_fim, valor_inicial, dia_vencimento,
-            { valor_iptu, valor_agua, valor_luz, valor_outros }
+            { valor_iptu, valor_agua, valor_luz, valor_outros, desconto_pontualidade }
         );
 
         for (const p of parcelas) {
@@ -314,7 +337,7 @@ router.put('/:id', async (req, res) => {
     try {
         const {
             data_inicio, data_fim, qtd_ocupantes, valor_inicial, dia_vencimento, observacoes_contrato,
-            valor_iptu, valor_agua, valor_luz, valor_outros
+            valor_iptu, valor_agua, valor_luz, valor_outros, desconto_pontualidade
         } = req.body;
 
         const result = await pool.query(
@@ -329,11 +352,12 @@ router.put('/:id', async (req, res) => {
         valor_agua = COALESCE($8, valor_agua),
         valor_luz = COALESCE($9, valor_luz),
         valor_outros = COALESCE($10, valor_outros),
+        desconto_pontualidade = COALESCE($11, desconto_pontualidade),
         updated_at = NOW()
-       WHERE id = $11 RETURNING *`,
+       WHERE id = $12 RETURNING *`,
             [
                 data_inicio, data_fim, qtd_ocupantes, valor_inicial, dia_vencimento, observacoes_contrato,
-                valor_iptu, valor_agua, valor_luz, valor_outros,
+                valor_iptu, valor_agua, valor_luz, valor_outros, desconto_pontualidade,
                 req.params.id
             ]
         );
@@ -862,6 +886,167 @@ router.get('/parcelas/:id/boleto', async (req, res) => {
     } catch (err) {
         console.error('Generate boleto error:', err);
         res.status(500).json({ error: 'Erro ao gerar boleto: ' + err.message });
+    }
+});
+
+// Bulk Print Boletos (HTML) - Sync
+router.get('/parcelas/bulk/boletos', async (req, res) => {
+    try {
+        const { ids } = req.query;
+        if (!ids) return res.status(400).send('IDs são obrigatórios.');
+
+        const idList = ids.split(',').filter(id => id && isValidUUID(id));
+
+        if (idList.length === 0) return res.status(400).send('IDs inválidos.');
+
+        // Fetch details for all selected installments
+        const result = await pool.query(`
+            SELECT cp.*, 
+                c.id as contrato_id,
+                i.nome_completo AS inquilino_nome, i.cpf AS inquilino_cpf, i.email AS inquilino_email,
+                p.endereco AS imovel_endereco, p.cidade AS imovel_cidade, p.uf AS imovel_uf, p.cep as imovel_cep,
+                u.identificador AS unidade_identificador
+            FROM contrato_parcelas cp
+            LEFT JOIN contratos c ON cp.contrato_id = c.id
+            LEFT JOIN inquilinos i ON cp.inquilino_id = i.id OR c.inquilino_id = i.id
+            LEFT JOIN unidades u ON cp.unidade_id = u.id OR c.unidade_id = u.id
+            LEFT JOIN propriedades p ON u.propriedade_id = p.id
+            WHERE cp.id = ANY($1::uuid[])
+        `, [idList]);
+
+        if (result.rows.length === 0) {
+            return res.status(404).send('Nenhuma parcela encontrada.');
+        }
+
+        const Boleto = require('node-boleto').Boleto;
+
+        // Render each boleto and combine HTML
+        const renderPromises = result.rows.map(parcela => {
+            const valorTotal = (
+                Number(parcela.valor_base) +
+                Number(parcela.valor_iptu) +
+                Number(parcela.valor_agua) +
+                Number(parcela.valor_luz) +
+                Number(parcela.valor_outros)
+            ).toFixed(2);
+
+            const boleto = new Boleto({
+                'banco': 'santander',
+                'data_emissao': new Date(),
+                'data_vencimento': new Date(parcela.data_vencimento),
+                'valor': Math.round(valorTotal * 100),
+                'nosso_numero': parcela.numero_parcela ? `0000000${parcela.numero_parcela}` : '00000000001',
+                'numero_documento': parcela.id.substring(0, 10),
+                'cedente': 'Gestão Imóveis Ltda',
+                'cedente_cnpj': '12.345.678/0001-90',
+                'agencia': '1234',
+                'codigo_cedente': '123456',
+                'carteira': '102',
+                'pagador': parcela.inquilino_nome,
+                'local_de_pagamento': 'PAGÁVEL EM QUALQUER BANCO ATÉ O VENCIMENTO.',
+                'instrucoes': [
+                    'Sr. Caixa, aceitar o pagamento após o vencimento com juros de dia.',
+                    `Referente a: ${parcela.descricao || 'Aluguel'}`
+                ],
+            });
+
+            return new Promise((resolve) => {
+                boleto.renderHTML((html) => resolve(html));
+            });
+        });
+
+        const htmlResults = await Promise.all(renderPromises);
+
+        // Combine into a master document
+        let masterHtml = `
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="utf-8">
+                <title>Impressão de Boletos em Massa</title>
+                <style>
+                    body { margin: 0; padding: 0; }
+                    .print-page { 
+                        page-break-after: always; 
+                        padding: 10px;
+                        display: flex;
+                        flex-direction: column;
+                        align-items: center;
+                    }
+                    .print-page:last-child { page-break-after: avoid; }
+                    /* Inject node-boleto internal styles if needed, but they are usually inline */
+                    @media print {
+                        body { -webkit-print-color-adjust: exact; }
+                        .boleto-viewer { transform: scale(0.95); transform-origin: top center; }
+                    }
+                </style>
+            </head>
+            <body onload="window.print()">
+        `;
+
+        htmlResults.forEach(html => {
+            // node-boleto returns a full document. Extract body content using simple match
+            const bodyContent = html.match(/<body>([\s\S]*)<\/body>/i);
+            const content = bodyContent ? bodyContent[1] : html;
+            masterHtml += `<div class="print-page">${content}</div>`;
+        });
+
+        masterHtml += `</body></html>`;
+        res.set('Content-Type', 'text/html');
+        res.send(masterHtml);
+
+    } catch (err) {
+        console.error('Bulk generation error:', err);
+        res.status(500).send('Erro ao gerar boletos em massa: ' + err.message);
+    }
+});
+
+// Bulk Print Boletos (PDF) - 4 per page
+router.get('/parcelas/bulk/pdf', async (req, res) => {
+    try {
+        const { ids } = req.query;
+        if (!ids) return res.status(400).send('IDs são obrigatórios.');
+
+        const idList = ids.split(',').filter(id => id && isValidUUID(id));
+        if (idList.length === 0) return res.status(400).send('IDs inválidos.');
+
+        const result = await pool.query(`
+            SELECT cp.*, 
+                c.id as contrato_id,
+                i.nome_completo AS inquilino_nome, i.cpf AS inquilino_cpf,
+                p.endereco AS imovel_endereco, p.numero AS imovel_numero, p.cidade AS imovel_cidade,
+                u.identificador AS unidade_identificador, u.tipo_unidade
+            FROM contrato_parcelas cp
+            LEFT JOIN contratos c ON cp.contrato_id = c.id
+            LEFT JOIN inquilinos i ON cp.inquilino_id = i.id OR c.inquilino_id = i.id
+            LEFT JOIN unidades u ON cp.unidade_id = u.id OR c.unidade_id = u.id
+            LEFT JOIN propriedades p ON u.propriedade_id = p.id
+            WHERE cp.id = ANY($1::uuid[])
+            ORDER BY cp.data_vencimento ASC
+        `, [idList]);
+
+        if (result.rows.length === 0) return res.status(404).send('Nenhuma parcela encontrada.');
+
+        const { generateBulkBoletosPDF } = require('../services/pdfService');
+        const path = require('path');
+        const fs = require('fs');
+
+        const tempDir = path.join(__dirname, '..', 'temp');
+        if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
+
+        const fileName = `boletos_massa_${new Date().getTime()}.pdf`;
+        const filePath = path.join(tempDir, fileName);
+
+        await generateBulkBoletosPDF(result.rows, filePath);
+
+        res.download(filePath, fileName, (err) => {
+            if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+            if (err) console.error('Download error:', err);
+        });
+
+    } catch (err) {
+        console.error('Bulk PDF error:', err);
+        res.status(500).send('Erro ao gerar PDF em massa: ' + err.message);
     }
 });
 

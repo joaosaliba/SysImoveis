@@ -2,7 +2,12 @@ const jwt = require('jsonwebtoken');
 
 function verifyToken(req, res, next) {
     const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1];
+    let token = authHeader && authHeader.split(' ')[1];
+
+    // Fallback to query parameter for specific cases like direct browser redirects (printing)
+    if (!token && req.query.token) {
+        token = req.query.token;
+    }
 
     if (!token) {
         return res.status(401).json({ error: 'Token de acesso não fornecido.' });
@@ -36,7 +41,7 @@ function checkRole(allowedRoles) {
         }
 
         if (!allowedRoles.includes(req.user.role)) {
-            return res.status(403).json({ 
+            return res.status(403).json({
                 error: 'Acesso negado. Permissões insuficientes.',
                 required: allowedRoles,
                 current: req.user.role

@@ -364,7 +364,7 @@ function BoletosContent() {
                                                 <Download className="w-4 h-4" />
                                             </a>
                                             <a
-                                                href={`/contratos/print/boleto/${p.id}`}
+                                                href={`/contratos/print/boletos?ids=${p.id}`}
                                                 target="_blank"
                                                 className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-600 transition-colors"
                                                 onClick={(e) => e.stopPropagation()}

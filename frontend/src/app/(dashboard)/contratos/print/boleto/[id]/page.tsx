@@ -50,7 +50,6 @@ export default function BoletoPrintPage() {
             .then(data => {
                 setParcela(data);
                 // Auto-print after a short delay to ensure rendering
-                setTimeout(() => window.print(), 500);
             })
             .catch(err => setError('Erro ao carregar boleto.'))
             .finally(() => setLoading(false));
@@ -213,7 +212,6 @@ export default function BoletoPrintPage() {
             </div>
 
             <div className="mt-8 text-center print:hidden">
-                <p className="text-gray-500 text-sm mb-4">A impressão deve iniciar automaticamente...</p>
                 <button
                     onClick={() => window.print()}
                     className="px-6 py-2 bg-[var(--color-primary)] text-white rounded-lg hover:opacity-90 transition-opacity"

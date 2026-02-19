@@ -3,11 +3,11 @@
 import { useEffect, useState, Suspense } from 'react';
 import { api } from '@/lib/api';
 import { useSearchParams } from 'next/navigation';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Printer, ArrowLeft } from 'lucide-react';
+import Link from 'next/link';
 
 interface BoletoData {
     id: string;
-    // ... same as single boleto, we will reuse the layout or structure
     inquilino_nome: string;
     inquilino_cpf: string;
     imovel_endereco: string;
@@ -25,12 +25,8 @@ interface BoletoData {
     data_vencimento: string;
     descricao?: string;
     numero_parcela: number;
-    qtd_ocupantes?: number;
-    periodo_inicio: string;
-    periodo_fim: string;
 }
 
-// Suspense wrapper for useSearchParams
 function BulkBoletoPrintContent() {
     const searchParams = useSearchParams();
     const idsString = searchParams.get('ids');
@@ -54,7 +50,6 @@ function BulkBoletoPrintContent() {
         Promise.all(ids.map(id => api.get(`/contratos/parcelas/${id}`)))
             .then(data => {
                 setBoletos(data);
-                setTimeout(() => window.print(), 1000);
             })
             .catch(err => console.error(err))
             .finally(() => setLoading(false));
@@ -70,10 +65,14 @@ function BulkBoletoPrintContent() {
 
     const formatDate = (dateStr: string) => {
         if (!dateStr) return '';
-        // Handle ISO T
         const d = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr;
         const [y, m, day] = d.split('-');
         return `${day}/${m}/${y}`;
+    };
+
+    const handlePrintPDF = () => {
+        const token = localStorage.getItem('accessToken');
+        window.location.href = `/api/contratos/parcelas/bulk/pdf?ids=${idsString}${token ? `&token=${token}` : ''}`;
     };
 
     // Helper to chunk array
@@ -83,119 +82,124 @@ function BulkBoletoPrintContent() {
     const boletoGroups = chunk(boletos, 4);
 
     return (
-        <div className="bg-white min-h-screen text-black font-sans">
-            <style jsx global>{`
-                @page { size: A4; margin: 0; }
-                @media print {
-                    body { -webkit-print-color-adjust: exact; }
-                    .page-container { height: 297mm; page-break-after: always; }
-                    .page-container:last-child { page-break-after: auto; }
-                }
-            `}</style>
-
-            {boletoGroups.map((group, i) => (
-                <div key={i} className="page-container flex flex-col w-[200mm] mx-auto bg-white print:w-full">
-                    {group.map((parcela, index) => {
-                        const totalBruto = (
-                            Number(parcela.valor_base) +
-                            Number(parcela.valor_iptu) +
-                            Number(parcela.valor_agua) +
-                            Number(parcela.valor_luz) +
-                            Number(parcela.valor_outros)
-                        );
-                        const desconto = Number(parcela.desconto_pontualidade) || 0;
-                        const totalComDesconto = totalBruto - desconto;
-
-                        return (
-                            <div key={parcela.id} className="h-[70mm] border-b border-dashed border-gray-400 flex flex-col p-4 box-border relative page-break-inside-avoid">
-                                <div className="border border-black h-full flex flex-col text-xs">
-                                    {/* Header: Tenant Info */}
-                                    <div className="border-b border-black flex bg-gray-50">
-                                        <div className="flex-1 p-1 border-r border-black">
-                                            <span className="font-bold text-[10px] block text-gray-500">SACADO</span>
-                                            <div className="uppercase font-semibold truncate">{parcela.inquilino_nome}</div>
-                                        </div>
-                                        <div className="w-1/4 p-1">
-                                            <span className="font-bold text-[10px] block text-gray-500">CPF</span>
-                                            <div>{parcela.inquilino_cpf}</div>
-                                        </div>
-                                    </div>
-
-                                    {/* Address Row */}
-                                    <div className="border-b border-black flex">
-                                        <div className="flex-[2] p-1 border-r border-black">
-                                            <span className="font-bold text-[10px] block text-gray-500">ENDEREÇO</span>
-                                            <div className="truncate">
-                                                {parcela.imovel_endereco}, {parcela.imovel_numero} - {parcela.imovel_cidade}
-                                            </div>
-                                        </div>
-                                        <div className="flex-1 p-1">
-                                            <span className="font-bold text-[10px] block text-gray-500">UNIDADE</span>
-                                            <div>{parcela.tipo_unidade} {parcela.unidade_identificador}</div>
-                                        </div>
-                                    </div>
-
-                                    {/* Main Content Area */}
-                                    <div className="flex flex-1">
-                                        {/* Left: Values */}
-                                        <div className="w-1/2 border-r border-black flex flex-col">
-                                            <div className="flex border-b border-black/50">
-                                                <div className="w-2/3 p-1 font-semibold border-r border-black/50">Aluguel</div>
-                                                <div className="w-1/3 p-1 text-right">{formatCurrency(parcela.valor_base)}</div>
-                                            </div>
-                                            <div className="flex border-b border-black/50">
-                                                <div className="w-2/3 p-1 font-semibold border-r border-black/50">Condomínio/Outros</div>
-                                                <div className="w-1/3 p-1 text-right">
-                                                    {formatCurrency(Number(parcela.valor_agua) + Number(parcela.valor_luz) + Number(parcela.valor_iptu) + Number(parcela.valor_outros))}
-                                                </div>
-                                            </div>
-
-                                            <div className="mt-auto border-t border-black bg-gray-100 flex items-center justify-between p-1">
-                                                <span className="font-bold">TOTAL BRUTO</span>
-                                                <span className="font-bold text-sm">{formatCurrency(totalBruto)}</span>
-                                            </div>
-                                        </div>
-
-                                        {/* Right: Dates & Discount */}
-                                        <div className="w-1/2 flex flex-col">
-                                            <div className="flex border-b border-black">
-                                                <div className="w-1/2 p-1 border-r border-black">
-                                                    <span className="font-bold text-[10px] block text-gray-500">VENCIMENTO</span>
-                                                    <div className="font-bold text-sm">{formatDate(parcela.data_vencimento)}</div>
-                                                </div>
-                                                <div className="w-1/2 p-1">
-                                                    <span className="font-bold text-[10px] block text-gray-500">REF</span>
-                                                    <div className="truncate text-[10px]">{parcela.descricao || `Parc. ${parcela.numero_parcela}`}</div>
-                                                </div>
-                                            </div>
-
-                                            <div className="p-1 border-b border-black flex-1">
-                                                <span className="font-bold text-[10px] block text-gray-500">OBSERVAÇÕES</span>
-                                                <div className="text-[10px] leading-tight">
-                                                    Até o vencimento: desconto de {formatCurrency(desconto)}<br />
-                                                    Total a pagar: <b>{formatCurrency(totalComDesconto)}</b>
-                                                </div>
-                                            </div>
-
-                                            <div className="flex h-8">
-                                                <div className="w-1/2 border-r border-black p-1">
-                                                    <span className="font-bold text-[8px] block text-gray-500">DATA PAGTO</span>
-                                                </div>
-                                                <div className="w-1/2 p-1">
-                                                    <span className="font-bold text-[8px] block text-gray-500">ASSINATURA</span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div className="absolute right-4 bottom-1 text-[8px] text-gray-400">
-                                    ID: {parcela.id.slice(0, 8)}
-                                </div>
-                            </div>
-                        );
-                    })}
+        <div className="bg-gray-100 min-h-screen text-black font-sans pb-10">
+            {/* Toolbar - Fixed at top for preview mode */}
+            <div className="sticky top-0 z-50 bg-white border-b border-gray-200 p-4 flex items-center justify-between shadow-sm print:hidden">
+                <div className="flex items-center gap-4">
+                    <Link href="/boletos" className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+                        <ArrowLeft className="w-5 h-5" />
+                    </Link>
+                    <div>
+                        <h1 className="font-bold text-lg">Conferência de Boletos</h1>
+                        <p className="text-xs text-gray-500">{boletos.length} boletos selecionados</p>
+                    </div>
                 </div>
-            ))}
+                <button
+                    onClick={handlePrintPDF}
+                    className="flex items-center gap-2 px-6 py-2.5 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-all shadow-md active:scale-95"
+                >
+                    <Printer className="w-5 h-5" /> Imprimir em PDF
+                </button>
+            </div>
+
+            <div className="max-w-[210mm] mx-auto py-8 space-y-8">
+                {boletoGroups.map((group, i) => (
+                    <div key={i} className="bg-white shadow-xl ring-1 ring-gray-900/5">
+                        {group.map((parcela) => {
+                            const totalBruto = (
+                                Number(parcela.valor_base) +
+                                Number(parcela.valor_iptu) +
+                                Number(parcela.valor_agua) +
+                                Number(parcela.valor_luz) +
+                                Number(parcela.valor_outros)
+                            );
+                            const desconto = Number(parcela.desconto_pontualidade) || 0;
+                            const totalComDesconto = totalBruto - desconto;
+
+                            return (
+                                <div key={parcela.id} className="h-[73mm] border-b border-dashed border-gray-300 flex flex-col p-6 box-border relative">
+                                    <div className="border border-black h-full flex flex-col text-xs">
+                                        {/* Header Row */}
+                                        <div className="border-b border-black flex bg-gray-50">
+                                            <div className="flex-1 p-2 border-r border-black">
+                                                <span className="font-bold text-[9px] block text-gray-400">SACADO</span>
+                                                <div className="uppercase font-bold truncate text-[11px]">{parcela.inquilino_nome}</div>
+                                            </div>
+                                            <div className="w-1/4 p-2">
+                                                <span className="font-bold text-[9px] block text-gray-400">CPF</span>
+                                                <div className="font-semibold text-[11px]">{parcela.inquilino_cpf || '-'}</div>
+                                            </div>
+                                        </div>
+
+                                        {/* Address Row */}
+                                        <div className="border-b border-black flex">
+                                            <div className="flex-[2] p-2 border-r border-black">
+                                                <span className="font-bold text-[9px] block text-gray-400">ENDEREÇO</span>
+                                                <div className="truncate text-[10px]">
+                                                    {parcela.imovel_endereco}, {parcela.imovel_numero || ''} - {parcela.imovel_cidade}
+                                                </div>
+                                            </div>
+                                            <div className="flex-1 p-2">
+                                                <span className="font-bold text-[9px] block text-gray-400">UNIDADE</span>
+                                                <div className="font-semibold text-[10px]">{parcela.tipo_unidade} {parcela.unidade_identificador}</div>
+                                            </div>
+                                        </div>
+
+                                        {/* Values Area */}
+                                        <div className="flex flex-1">
+                                            <div className="w-1/2 border-r border-black flex flex-col">
+                                                <div className="flex border-b border-black/30 p-1.5 justify-between italic">
+                                                    <span>Aluguel</span>
+                                                    <span>{formatCurrency(parcela.valor_base)}</span>
+                                                </div>
+                                                <div className="flex border-b border-black/30 p-1.5 justify-between italic">
+                                                    <span>Condomínio/Outros</span>
+                                                    <span>{formatCurrency(Number(parcela.valor_agua) + Number(parcela.valor_luz) + Number(parcela.valor_iptu) + Number(parcela.valor_outros))}</span>
+                                                </div>
+                                                <div className="mt-auto bg-gray-100 p-2 flex items-center justify-between border-t border-black">
+                                                    <span className="font-bold">TOTAL BRUTO</span>
+                                                    <span className="font-bold text-sm">{formatCurrency(totalBruto)}</span>
+                                                </div>
+                                            </div>
+
+                                            <div className="w-1/2 flex flex-col">
+                                                <div className="flex border-b border-black">
+                                                    <div className="w-1/2 p-2 border-r border-black">
+                                                        <span className="font-bold text-[9px] block text-gray-400">VENCIMENTO</span>
+                                                        <div className="font-black text-[13px]">{formatDate(parcela.data_vencimento)}</div>
+                                                    </div>
+                                                    <div className="w-1/2 p-2">
+                                                        <span className="font-bold text-[9px] block text-gray-400">REF</span>
+                                                        <div className="truncate text-[9px] font-medium">{parcela.descricao || `Parc. ${parcela.numero_parcela}`}</div>
+                                                    </div>
+                                                </div>
+                                                <div className="p-2 border-b border-black flex-1">
+                                                    <span className="font-bold text-[9px] block text-gray-400">OBSERVAÇÕES</span>
+                                                    <div className="text-[10px] leading-tight mt-1">
+                                                        Até o vencimento: desconto de <b>{formatCurrency(desconto)}</b><br />
+                                                        Total a pagar: <b className="text-[12px]">{formatCurrency(totalComDesconto)}</b>
+                                                    </div>
+                                                </div>
+                                                <div className="flex h-10">
+                                                    <div className="w-1/2 border-r border-black p-1">
+                                                        <span className="font-bold text-[8px] block text-gray-300">DATA PAGTO</span>
+                                                    </div>
+                                                    <div className="w-1/2 p-1">
+                                                        <span className="font-bold text-[8px] block text-gray-300">ASSINATURA</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="absolute right-8 bottom-2 text-[8px] text-gray-300 italic">
+                                        ID: {parcela.id.slice(0, 8)} | Gerado pelo Sistema de Gestão
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                ))}
+            </div>
         </div>
     );
 }

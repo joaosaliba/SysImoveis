@@ -140,7 +140,7 @@ function generateBoletoPDF(parcela, outputPath) {
 
             // Valores
             const total = parcela.valor_base + parcela.valor_iptu + parcela.valor_agua + parcela.valor_luz + parcela.valor_outros - parcela.desconto_pontualidade;
-            
+
             doc.fontSize(10);
             doc.text(`Aluguel: R$ ${parcela.valor_base.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`);
             if (parcela.valor_iptu > 0) doc.text(`IPTU: R$ ${parcela.valor_iptu.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`);
@@ -148,7 +148,7 @@ function generateBoletoPDF(parcela, outputPath) {
             if (parcela.valor_luz > 0) doc.text(`Luz: R$ ${parcela.valor_luz.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`);
             if (parcela.valor_outros > 0) doc.text(`Outros: R$ ${parcela.valor_outros.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`);
             if (parcela.desconto_pontualidade > 0) doc.text(`Desconto: -R$ ${parcela.desconto_pontualidade.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, { color: '#22c55e' });
-            
+
             doc.moveDown(0.5);
             doc.fontSize(14).text(`TOTAL: R$ ${total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, { bold: true, underline: true });
 
@@ -168,7 +168,124 @@ function generateBoletoPDF(parcela, outputPath) {
     });
 }
 
+/**
+ * Gera PDF de boletos em massa (4 por página)
+ * @param {Array} parcelas - Array de parcelas
+ * @param {String} outputPath - Caminho para salvar o PDF
+ * @returns {Promise<string>} - Caminho do arquivo gerado
+ */
+function generateBulkBoletosPDF(parcelas, outputPath) {
+    return new Promise((resolve, reject) => {
+        try {
+            const doc = new pdfkit({ size: 'A4', margin: 0 });
+            const stream = require('fs').createWriteStream(outputPath);
+            doc.pipe(stream);
+
+            const formatCurrency = (val) => {
+                return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(val) || 0);
+            };
+
+            const formatDate = (date) => {
+                if (!date) return '-';
+                const d = new Date(date);
+                return d.toLocaleDateString('pt-BR');
+            };
+
+            // Process logically in groups of 4
+            for (let i = 0; i < parcelas.length; i++) {
+                const p = parcelas[i];
+                const pageIndex = i % 4;
+
+                // Add new page if we are at the start of a new group of 4 (except first)
+                if (i > 0 && pageIndex === 0) {
+                    doc.addPage();
+                }
+
+                const startY = 10 + (pageIndex * 200); // Layout refined for A4 height
+                const marginX = 40;
+                const width = 515;
+                const height = 190;
+
+                // Draw Outer Box
+                doc.rect(marginX, startY, width, height).stroke();
+
+                // Row 1: Sacado & CPF
+                doc.rect(marginX, startY, width, 25).fillAndStroke('#f3f4f6', '#000');
+                doc.fillColor('#000').fontSize(8).text('SACADO', marginX + 5, startY + 5);
+                doc.fontSize(10).text(p.inquilino_nome || '', marginX + 5, startY + 14, { width: 350, ellipsis: true });
+
+                doc.moveTo(marginX + 380, startY).lineTo(marginX + 380, startY + 25).stroke();
+                doc.fontSize(8).text('CPF', marginX + 385, startY + 5);
+                doc.fontSize(10).text(p.inquilino_cpf || '-', marginX + 385, startY + 14);
+
+                // Row 2: Endereço & Unidade
+                const row2Y = startY + 25;
+                doc.rect(marginX, row2Y, width, 25).stroke();
+                doc.fontSize(8).text('ENDEREÇO', marginX + 5, row2Y + 5);
+                const endereco = `${p.imovel_endereco}${p.imovel_numero ? ', ' + p.imovel_numero : ''} - ${p.imovel_cidade}`;
+                doc.fontSize(10).text(endereco, marginX + 5, row2Y + 14, { width: 350, ellipsis: true });
+
+                doc.moveTo(marginX + 380, row2Y).lineTo(marginX + 380, row2Y + 25).stroke();
+                doc.fontSize(8).text('UNIDADE', marginX + 385, row2Y + 5);
+                doc.fontSize(10).text(`${p.tipo_unidade || ''} ${p.unidade_identificador || ''}`, marginX + 385, row2Y + 14);
+
+                // Split Area: Left (Values) | Right (Details)
+                const splitY = row2Y + 25;
+                const midX = marginX + (width / 2);
+                doc.moveTo(midX, splitY).lineTo(midX, startY + height).stroke();
+
+                // Left: Items
+                doc.fontSize(10);
+                doc.text('Aluguel', marginX + 5, splitY + 10);
+                doc.text(formatCurrency(p.valor_base), marginX + 150, splitY + 10, { align: 'right', width: 100 });
+
+                doc.text('Condomínio/Outros', marginX + 5, splitY + 25);
+                const outros = Number(p.valor_iptu) + Number(p.valor_agua) + Number(p.valor_luz) + Number(p.valor_outros);
+                doc.text(formatCurrency(outros), marginX + 150, splitY + 25, { align: 'right', width: 100 });
+
+                // Bruto Box
+                const brutoY = startY + height - 30;
+                doc.rect(marginX, brutoY, (width / 2), 30).fillAndStroke('#e5e7eb', '#000');
+                doc.fillColor('#000').fontSize(10).text('TOTAL BRUTO', marginX + 5, brutoY + 10);
+                doc.fontSize(12).text(formatCurrency(Number(p.valor_base) + outros), marginX + 150, brutoY + 10, { align: 'right', width: 100, bold: true });
+
+                // Right: Vencimento & Obs
+                doc.fontSize(8).text('VENCIMENTO', midX + 5, splitY + 5);
+                doc.fontSize(14).text(formatDate(p.data_vencimento), midX + 5, splitY + 14, { bold: true });
+
+                doc.fontSize(8).text('REF', midX + 150, splitY + 5);
+                doc.fontSize(10).text(p.descricao || `Parc. ${p.numero_parcela}`, midX + 150, splitY + 14);
+
+                doc.moveTo(midX, splitY + 35).lineTo(marginX + width, splitY + 35).stroke();
+                doc.fontSize(8).text('OBSERVAÇÕES', midX + 5, splitY + 40);
+                const desconto = Number(p.desconto_pontualidade) || 0;
+                const total = (Number(p.valor_base) + outros) - desconto;
+                doc.fontSize(9).text(`Até o vencimento: desconto de ${formatCurrency(desconto)}`, midX + 5, splitY + 50);
+                doc.fontSize(11).text(`Total a pagar: `, midX + 5, splitY + 65, { continued: true }).text(formatCurrency(total), { bold: true });
+
+                // Footer Row (Signature)
+                const footerY = startY + height - 40;
+                doc.moveTo(midX, footerY).lineTo(marginX + width, footerY).stroke();
+                doc.fontSize(8).text('DATA PAGTO', midX + 5, footerY + 5);
+                doc.moveTo(midX + 120, footerY).lineTo(midX + 120, startY + height).stroke();
+                doc.text('ASSINATURA', midX + 125, footerY + 5);
+
+                // ID Stamp
+                doc.fontSize(7).fillColor('#bbb').text(`ID: ${p.id.slice(0, 8)}`, marginX + width - 50, startY + height - 10);
+                doc.fillColor('#000'); // Reset
+            }
+
+            doc.end();
+            stream.on('finish', () => resolve(outputPath));
+            stream.on('error', reject);
+        } catch (err) {
+            reject(err);
+        }
+    });
+}
+
 module.exports = {
     generateContratoPDF,
     generateBoletoPDF,
+    generateBulkBoletosPDF,
 };

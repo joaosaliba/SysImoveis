@@ -41,6 +41,7 @@ interface Contrato {
     qtd_ocupantes: number;
     valor_inicial: number;
     dia_vencimento: number;
+    desconto_pontualidade: number;
     status_encerrado: boolean;
     observacoes_contrato: string;
     parcelas?: Parcela[];
@@ -58,6 +59,17 @@ export default function ContractDetailModal({ isOpen, onClose, contractId }: Con
     const [loading, setLoading] = useState(false);
     const [page, setPage] = useState(1);
     const itemsPerPage = 12;
+
+    const [isRenewing, setIsRenewing] = useState(false);
+    const [renewForm, setRenewForm] = useState({
+        nova_data_inicio: '',
+        nova_data_fim: '',
+        novo_valor: '',
+        indice_reajuste: '',
+        observacoes: ''
+    });
+    const [renewLoading, setRenewLoading] = useState(false);
+    const [renewError, setRenewError] = useState('');
 
     const fetchContract = useCallback(async () => {
         if (!contractId) return;
@@ -78,8 +90,42 @@ export default function ContractDetailModal({ isOpen, onClose, contractId }: Con
             fetchContract();
         } else if (!isOpen) {
             setContract(null);
+            setIsRenewing(false);
+            setRenewError('');
         }
     }, [isOpen, contractId, fetchContract]);
+
+    const handleRenew = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!contract) return;
+        setRenewLoading(true);
+        setRenewError('');
+
+        // Basic Frontend Validation (Overlap)
+        const currentStart = new Date(contract.data_inicio);
+        const currentEnd = new Date(contract.data_fim);
+        const newStart = new Date(renewForm.nova_data_inicio);
+        const newEnd = new Date(renewForm.nova_data_fim);
+
+        if (newStart <= currentEnd && newEnd >= currentStart) {
+            setRenewError('O novo período se sobrepõe ao período atual do contrato.');
+            setRenewLoading(false);
+            return;
+        }
+
+        try {
+            await api.post(`/contratos/${contract.id}/renovar`, {
+                ...renewForm,
+                novo_valor: parseFloat(renewForm.novo_valor)
+            });
+            setIsRenewing(false);
+            fetchContract();
+        } catch (err: any) {
+            setRenewError(err.message || 'Erro ao renovar contrato');
+        } finally {
+            setRenewLoading(false);
+        }
+    };
 
     const formatCurrency = (val: any) => {
         return (Number(val) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -92,7 +138,8 @@ export default function ContractDetailModal({ isOpen, onClose, contractId }: Con
     };
 
     const getParcelaTotal = (p: Parcela) => {
-        return Number(p.valor_base) + Number(p.valor_iptu || 0) + Number(p.valor_agua || 0) + Number(p.valor_luz || 0) + Number(p.valor_outros || 0);
+        const principal = Number(p.valor_base) + Number(p.valor_iptu || 0) + Number(p.valor_agua || 0) + Number(p.valor_luz || 0) + Number(p.valor_outros || 0);
+        return principal - Number(p.desconto_pontualidade || 0);
     };
 
     const parcelaStatusIcon = (status: string) => {
@@ -172,6 +219,11 @@ export default function ContractDetailModal({ isOpen, onClose, contractId }: Con
                                     <p className="text-xs text-[var(--color-text-muted)] font-medium">
                                         Dia {contract.dia_vencimento} • {formatDate(contract.data_inicio)} a {formatDate(contract.data_fim)}
                                     </p>
+                                    {contract.desconto_pontualidade > 0 && (
+                                        <p className="text-[10px] text-green-600 font-bold mt-1 uppercase">
+                                            - {formatCurrency(contract.desconto_pontualidade)} Pontualidade
+                                        </p>
+                                    )}
                                 </div>
                             </div>
 
@@ -226,6 +278,7 @@ export default function ContractDetailModal({ isOpen, onClose, contractId }: Con
                                                 <th className="px-4 py-3 font-bold text-[var(--color-text-muted2)] w-10">#</th>
                                                 <th className="px-4 py-3 font-bold text-[var(--color-text-muted2)]">Vencimento</th>
                                                 <th className="px-4 py-3 font-bold text-[var(--color-text-muted2)] text-right">Valor</th>
+                                                <th className="px-4 py-3 font-bold text-[var(--color-text-muted2)] text-right">Desc.</th>
                                                 <th className="px-4 py-3 font-bold text-[var(--color-text-muted2)]">Status</th>
                                                 <th className="px-4 py-3 font-bold text-[var(--color-text-muted2)]">Pagamento</th>
                                                 <th className="px-4 py-3 font-bold text-[var(--color-text-muted2)] text-right">Ação</th>
@@ -238,6 +291,9 @@ export default function ContractDetailModal({ isOpen, onClose, contractId }: Con
                                                         <td className="px-4 py-3 font-bold text-gray-400">{p.numero_parcela}</td>
                                                         <td className="px-4 py-3 font-medium">{formatDate(p.data_vencimento)}</td>
                                                         <td className="px-4 py-3 font-bold text-right">{formatCurrency(getParcelaTotal(p))}</td>
+                                                        <td className="px-4 py-3 text-right text-green-600 font-medium">
+                                                            {p.desconto_pontualidade > 0 ? formatCurrency(p.desconto_pontualidade) : '—'}
+                                                        </td>
                                                         <td className="px-4 py-3">
                                                             <div className="flex items-center gap-1.5">
                                                                 {parcelaStatusIcon(p.status_pagamento)}
@@ -295,12 +351,87 @@ export default function ContractDetailModal({ isOpen, onClose, contractId }: Con
                     )}
                 </div>
 
+                {/* Renewal Overlay Form */}
+                {isRenewing && (
+                    <div className="absolute inset-0 bg-white z-[70] flex flex-col rounded-2xl">
+                        <div className="flex items-center justify-between p-6 border-b border-[var(--color-border)]">
+                            <h2 className="text-xl font-bold flex items-center gap-2">
+                                <CalendarPlus className="w-6 h-6 text-purple-600" /> Renovar Contrato
+                            </h2>
+                            <button onClick={() => setIsRenewing(false)} className="p-2 rounded-lg hover:bg-gray-100"><X className="w-5 h-5" /></button>
+                        </div>
+                        <form onSubmit={handleRenew} className="flex-1 overflow-y-auto p-6 space-y-6">
+                            <div className="bg-purple-50 text-purple-800 p-4 rounded-xl text-sm border border-purple-100">
+                                Ao renovar, o período do contrato será atualizado e o novo valor de aluguel passará a valer para as próximas parcelas geradas.
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium mb-1">Nova Data Início *</label>
+                                    <input type="date" required value={renewForm.nova_data_inicio}
+                                        onChange={e => setRenewForm({ ...renewForm, nova_data_inicio: e.target.value })}
+                                        className="w-full px-4 py-3 rounded-xl border border-[var(--color-border)] focus:ring-2 focus:ring-purple-500/20" />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium mb-1">Nova Data Fim *</label>
+                                    <input type="date" required value={renewForm.nova_data_fim}
+                                        onChange={e => setRenewForm({ ...renewForm, nova_data_fim: e.target.value })}
+                                        className="w-full px-4 py-3 rounded-xl border border-[var(--color-border)] focus:ring-2 focus:ring-purple-500/20" />
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium mb-1">Novo Valor Aluguel (R$) *</label>
+                                    <input type="number" step="0.01" required value={renewForm.novo_valor}
+                                        onChange={e => setRenewForm({ ...renewForm, novo_valor: e.target.value })}
+                                        className="w-full px-4 py-3 rounded-xl border border-[var(--color-border)] focus:ring-2 focus:ring-purple-500/20" />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium mb-1">Índice Reajuste (Ex: IGPM + 5%)</label>
+                                    <input type="text" value={renewForm.indice_reajuste}
+                                        onChange={e => setRenewForm({ ...renewForm, indice_reajuste: e.target.value })}
+                                        className="w-full px-4 py-3 rounded-xl border border-[var(--color-border)] focus:ring-2 focus:ring-purple-500/20" />
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium mb-1">Observações da Renovação</label>
+                                <textarea rows={3} value={renewForm.observacoes}
+                                    onChange={e => setRenewForm({ ...renewForm, observacoes: e.target.value })}
+                                    className="w-full px-4 py-3 rounded-xl border border-[var(--color-border)] resize-none" />
+                            </div>
+
+                            {renewError && <div className="p-4 rounded-xl bg-red-50 border border-red-100 text-red-600 text-sm font-medium">{renewError}</div>}
+                        </form>
+                        <div className="p-6 border-t border-[var(--color-border)] bg-gray-50 flex justify-end gap-3 rounded-b-2xl">
+                            <button type="button" onClick={() => setIsRenewing(false)} className="px-6 py-2.5 rounded-xl border font-bold hover:bg-white">Cancelar</button>
+                            <button type="submit" disabled={renewLoading} onClick={handleRenew}
+                                className="px-8 py-2.5 rounded-xl bg-purple-600 text-white font-bold hover:bg-purple-700 disabled:opacity-50 shadow-lg shadow-purple-500/25">
+                                {renewLoading ? 'Processando...' : 'Confirmar Renovação'}
+                            </button>
+                        </div>
+                    </div>
+                )}
+
                 {/* Footer */}
                 <div className="p-6 border-t border-[var(--color-border)] bg-gray-50/50 rounded-b-2xl flex justify-between items-center shrink-0">
-                    <div className="flex gap-2">
-                        {contract && (
-                            <button onClick={() => window.print()} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white border border-[var(--color-border)] text-[var(--color-text)] font-semibold hover:bg-gray-50 transition-all shadow-sm">
-                                <Printer className="w-4 h-4" /> Imprimir Ficha
+                    <div className="flex gap-3">
+                        {!contract?.status_encerrado && (
+                            <button
+                                onClick={() => {
+                                    setRenewForm({
+                                        nova_data_inicio: '',
+                                        nova_data_fim: '',
+                                        novo_valor: String(contract?.valor_inicial || ''),
+                                        indice_reajuste: '',
+                                        observacoes: ''
+                                    });
+                                    setIsRenewing(true);
+                                }}
+                                className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-purple-50 text-purple-700 border border-purple-100 font-bold hover:bg-purple-100 transition-all shadow-sm"
+                            >
+                                <RefreshCw className="w-4 h-4" /> Renovar Contrato
                             </button>
                         )}
                     </div>

@@ -94,7 +94,8 @@ interface PaginatedResponse {
 const emptyForm = {
     inquilino_id: '', unidade_id: '', data_inicio: '', data_fim: '',
     qtd_ocupantes: '1', valor_inicial: '', dia_vencimento: '10', observacoes_contrato: '',
-    valor_iptu: '', valor_agua: '', valor_luz: '', valor_outros: ''
+    valor_iptu: '', valor_agua: '', valor_luz: '', valor_outros: '',
+    desconto_pontualidade: '0'
 };
 
 const emptyStandaloneForm = {
@@ -310,7 +311,8 @@ export default function ContratosPage() {
             valor_iptu: '', // TODO: These are not in the main contract object in list view, might need detail fetch if not available
             valor_agua: '',
             valor_luz: '',
-            valor_outros: ''
+            valor_outros: '',
+            desconto_pontualidade: ''
             // Note: Breakdown values are usually hidden in main table list. 
             // If the user wants to edit breakdown, they might need to do it via a specialized breakdown edit or we fetch detail first.
             // For now, let's pre-fill with defaults or if we have them. 
@@ -334,7 +336,8 @@ export default function ContratosPage() {
                 valor_iptu: String(fullData.valor_iptu || 0),
                 valor_agua: String(fullData.valor_agua || 0),
                 valor_luz: String(fullData.valor_luz || 0),
-                valor_outros: String(fullData.valor_outros || 0)
+                valor_outros: String(fullData.valor_outros || 0),
+                desconto_pontualidade: String(fullData.desconto_pontualidade || 0)
             });
             setEditingContract(fullData);
             setSelectedPropId(''); // Reset or find property? 
@@ -360,6 +363,7 @@ export default function ContratosPage() {
                 valor_agua: form.valor_agua ? parseFloat(form.valor_agua) : 0,
                 valor_luz: form.valor_luz ? parseFloat(form.valor_luz) : 0,
                 valor_outros: form.valor_outros ? parseFloat(form.valor_outros) : 0,
+                desconto_pontualidade: form.desconto_pontualidade ? parseFloat(form.desconto_pontualidade) : 0,
             };
 
             if (editingContract) {
@@ -735,6 +739,11 @@ export default function ContratosPage() {
                                         <label className="block text-xs font-medium text-[var(--color-text-muted)] mb-1">Outros</label>
                                         <input type="number" step="0.01" value={form.valor_outros}
                                             onChange={e => setForm({ ...form, valor_outros: e.target.value })} placeholder="0,00" className={inputClass} />
+                                    </div>
+                                    <div className="md:col-span-1">
+                                        <label className="block text-xs font-bold text-green-600 mb-1">Desc. Pontualidade</label>
+                                        <input type="number" step="0.01" value={form.desconto_pontualidade}
+                                            onChange={e => setForm({ ...form, desconto_pontualidade: e.target.value })} placeholder="0,00" className={`${inputClass} border-green-200 bg-green-50/30`} />
                                     </div>
                                 </div>
                             </div>
