@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
 import { Pagination } from '@/components/ui/Pagination';
 import AlertModal from '@/components/ui/AlertModal';
-import { Search, Printer, Calendar, Filter, FileText, CheckSquare, Square, CheckCircle, AlertTriangle, Clock, Ban, RefreshCw, DollarSign, Pencil } from 'lucide-react';
+import { Search, Printer, Calendar, Filter, FileText, CheckSquare, Square, CheckCircle, AlertTriangle, Clock, Ban, RefreshCw, DollarSign, Pencil, Download } from 'lucide-react';
 import { format } from 'date-fns';
 import BulkActionModal from '@/components/BulkActionModal';
 import ParcelaModal from '@/components/ParcelaModal';
@@ -36,10 +37,25 @@ interface Propriedade { id: string; nome: string; endereco: string; }
 interface Inquilino { id: string; nome_completo: string; }
 
 export default function BoletosPage() {
+    return (
+        <Suspense fallback={<div className="p-8 text-center text-gray-500">Carregando...</div>}>
+            <BoletosContent />
+        </Suspense>
+    );
+}
+
+function BoletosContent() {
+    const searchParams = useSearchParams();
+    const statusParam = searchParams.get('status');
+
     // Filters
-    const [dtInicio, setDtInicio] = useState(format(new Date(new Date().getFullYear(), 0, 1), 'yyyy-MM-01')); // Start of current year
+    const [dtInicio, setDtInicio] = useState(
+        statusParam === 'atrasado'
+            ? '2000-01-01'
+            : format(new Date(new Date().getFullYear(), 0, 1), 'yyyy-MM-01')
+    ); // Start of current year, or far past for overdue
     const [dtFim, setDtFim] = useState(format(new Date(new Date().getFullYear() + 1, 11, 31), 'yyyy-MM-dd')); // End of next year
-    const [status, setStatus] = useState('pendente');
+    const [status, setStatus] = useState(statusParam || 'pendente');
     const [imovelId, setImovelId] = useState('');
     const [inquilinoId, setInquilinoId] = useState('');
 
@@ -55,8 +71,8 @@ export default function BoletosPage() {
     const itemsPerPage = 20; // More items for invoices usually
 
     useEffect(() => {
-        api.get('/propriedades').then(setPropriedades).catch(console.error);
-        api.get('/inquilinos').then(setInquilinos).catch(console.error);
+        api.get('/propriedades').then(res => setPropriedades(Array.isArray(res) ? res : res.data || [])).catch(console.error);
+        api.get('/inquilinos').then(res => setInquilinos(Array.isArray(res) ? res : res.data || [])).catch(console.error);
     }, []);
 
     const loadParcelas = useCallback(async () => {
@@ -70,7 +86,7 @@ export default function BoletosPage() {
                 ...(inquilinoId && { inquilino_id: inquilinoId })
             });
             const data = await api.get(`/contratos/parcelas/filtro?${params}`);
-            setParcelas(data);
+            setParcelas(Array.isArray(data) ? data : data.data || []);
             setSelectedIds(new Set()); // Reset selection on filter change
             setCurrentPage(1); // Reset page on filter change
         } catch (err: unknown) {
@@ -338,6 +354,15 @@ export default function BoletosPage() {
                                                 </button>
                                             )}
 
+                                            <a
+                                                href={`/api/relatorios/boleto/${p.id}`}
+                                                target="_blank"
+                                                className="p-1.5 rounded-lg hover:bg-green-100 text-green-600 transition-colors"
+                                                onClick={(e) => e.stopPropagation()}
+                                                title="Baixar PDF"
+                                            >
+                                                <Download className="w-4 h-4" />
+                                            </a>
                                             <a
                                                 href={`/contratos/print/boleto/${p.id}`}
                                                 target="_blank"

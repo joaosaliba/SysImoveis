@@ -8,7 +8,7 @@ import InstallmentGenerationModal from '@/components/InstallmentGenerationModal'
 import { Pagination } from '@/components/ui/Pagination';
 import {
     Plus, Search, Eye, X, FileText, AlertTriangle,
-    CheckCircle, Clock, Ban, Printer, RefreshCw, DollarSign, CalendarPlus, Trash2, Pencil
+    CheckCircle, Clock, Ban, Printer, RefreshCw, DollarSign, CalendarPlus, Trash2, Pencil, Download
 } from 'lucide-react';
 import { Combobox } from '@/components/ui/Combobox';
 import ContractDetailModal from '@/components/ContractDetailModal';
@@ -79,6 +79,18 @@ interface Unidade {
     valor_sugerido?: number;
 }
 
+interface PaginatedResponse {
+    data: Contrato[];
+    pagination: {
+        total: number;
+        page: number;
+        limit: number;
+        totalPages: number;
+        hasNext: boolean;
+        hasPrev: boolean;
+    };
+}
+
 const emptyForm = {
     inquilino_id: '', unidade_id: '', data_inicio: '', data_fim: '',
     qtd_ocupantes: '1', valor_inicial: '', dia_vencimento: '10', observacoes_contrato: '',
@@ -92,7 +104,7 @@ const emptyStandaloneForm = {
 };
 
 export default function ContratosPage() {
-    const [contratos, setContratos] = useState<Contrato[]>([]);
+    const [paginationData, setPaginationData] = useState<PaginatedResponse | null>(null);
     const [search, setSearch] = useState('');
     const [showForm, setShowForm] = useState(false);
     const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
@@ -156,30 +168,29 @@ export default function ContratosPage() {
     const [editingContract, setEditingContract] = useState<Contrato | null>(null);
 
     const [currentPage, setCurrentPage] = useState(1);
-    const itemsPerPage = 10;
+    const [itemsPerPage, setItemsPerPage] = useState(10);
     const [genModal, setGenModal] = useState({ isOpen: false, contractId: '', contractValue: 0 });
 
     useEffect(() => {
         loadContratos();
         fetchLists();
-    }, []);
+    }, [currentPage, itemsPerPage, search]);
 
     const loadContratos = async () => {
         setLoading(true);
         try {
-            const data = await api.get('/contratos');
-            setContratos(data);
+            const params = new URLSearchParams();
+            params.set('page', currentPage.toString());
+            params.set('limit', itemsPerPage.toString());
+
+            const response = await api.get(`/contratos?${params.toString()}`);
+            setPaginationData(response);
         } catch (err) { console.error(err); }
         finally { setLoading(false); }
     };
 
-    const filteredContratos = contratos.filter(c =>
-        (c.inquilino_nome || '').toLowerCase().includes(search.toLowerCase()) ||
-        (c.imovel_endereco || '').toLowerCase().includes(search.toLowerCase()) ||
-        (c.unidade_identificador || '').toLowerCase().includes(search.toLowerCase())
-    );
-    const totalPages = Math.ceil(filteredContratos.length / itemsPerPage);
-    const paginatedContratos = filteredContratos.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+    const contratos = paginationData?.data || [];
+    const pagination = paginationData?.pagination;
 
 
 
@@ -245,8 +256,8 @@ export default function ContratosPage() {
                 api.get('/inquilinos'),
                 api.get('/propriedades')
             ]);
-            setInquilinos(inqRes);
-            setPropriedades(propRes);
+            setInquilinos(Array.isArray(inqRes) ? inqRes : inqRes.data || []);
+            setPropriedades(Array.isArray(propRes) ? propRes : propRes.data || []);
             setUnidades([]); // Clear units, they will be fetched on property selection
         } catch (err) {
             console.error('Error fetching lists:', err);
@@ -539,7 +550,7 @@ export default function ContratosPage() {
                                         <p className="text-[var(--color-text-muted)]">Nenhum contrato encontrado</p>
                                     </td>
                                 </tr>
-                            ) : paginatedContratos.map(c => (
+                            ) : contratos.map(c => (
                                 <tr key={c.id} className="hover:bg-gray-50/50 transition-colors">
                                     <td className="px-6 py-4">
                                         <div className="flex items-center gap-2">
@@ -567,6 +578,13 @@ export default function ContratosPage() {
                                     </td>
                                     <td className="px-6 py-4">
                                         <div className="flex items-center gap-2">
+                                            <button
+                                                onClick={() => window.open(`/api/relatorios/contrato/${c.id}`, '_blank')}
+                                                className="p-2 rounded-lg hover:bg-green-50 text-green-600"
+                                                title="Baixar PDF do Contrato"
+                                            >
+                                                <Download className="w-4 h-4" />
+                                            </button>
                                             <button onClick={() => viewDetail(c.id)} className="p-2 rounded-lg hover:bg-blue-50 text-[var(--color-primary)]">
                                                 <Eye className="w-4 h-4" />
                                             </button>
@@ -587,7 +605,14 @@ export default function ContratosPage() {
                 </div>
                 {/* Pagination */}
                 <div className="p-4 border-t border-[var(--color-border)]">
-                    <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />
+                    {pagination && (
+                        <Pagination
+                            currentPage={pagination.page}
+                            totalPages={pagination.totalPages}
+                            onPageChange={setCurrentPage}
+                            onLimitChange={setItemsPerPage}
+                        />
+                    )}
                 </div>
             </div>
 

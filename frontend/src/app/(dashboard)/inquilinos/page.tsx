@@ -19,6 +19,18 @@ interface Inquilino {
     restricoes: string;
 }
 
+interface PaginatedResponse {
+    data: Inquilino[];
+    pagination: {
+        total: number;
+        page: number;
+        limit: number;
+        totalPages: number;
+        hasNext: boolean;
+        hasPrev: boolean;
+    };
+}
+
 const UFS = ['AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG', 'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO'];
 
 const emptyForm = {
@@ -27,7 +39,7 @@ const emptyForm = {
 };
 
 export default function InquilinosPage() {
-    const [inquilinos, setInquilinos] = useState<Inquilino[]>([]);
+    const [paginationData, setPaginationData] = useState<PaginatedResponse | null>(null);
     const [search, setSearch] = useState('');
     const [showForm, setShowForm] = useState(false);
     const [editing, setEditing] = useState<Inquilino | null>(null);
@@ -37,20 +49,26 @@ export default function InquilinosPage() {
     const [error, setError] = useState('');
 
     const [currentPage, setCurrentPage] = useState(1);
-    const itemsPerPage = 10;
+    const [itemsPerPage, setItemsPerPage] = useState(10);
 
     const loadData = useCallback(async () => {
+        setLoading(true);
         try {
-            const data = await api.get(`/inquilinos${search ? `?search=${search}` : ''}`);
-            setInquilinos(data);
+            const params = new URLSearchParams();
+            params.set('page', currentPage.toString());
+            params.set('limit', itemsPerPage.toString());
+            if (search) params.set('search', search);
+
+            const response = await api.get(`/inquilinos?${params.toString()}`);
+            setPaginationData(response);
         } catch (err) { console.error(err); }
         finally { setLoading(false); }
-    }, [search]);
+    }, [search, currentPage, itemsPerPage]);
 
     useEffect(() => { loadData(); }, [loadData]);
 
-    const totalPages = Math.ceil(inquilinos.length / itemsPerPage);
-    const paginatedInquilinos = inquilinos.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+    const inquilinos = paginationData?.data || [];
+    const pagination = paginationData?.pagination;
 
     const openNew = () => { setForm(emptyForm); setEditing(null); setShowForm(true); setError(''); };
 
@@ -137,7 +155,7 @@ export default function InquilinosPage() {
                                         <p className="text-[var(--color-text-muted)]">Nenhum inquilino encontrado</p>
                                     </td>
                                 </tr>
-                            ) : paginatedInquilinos.map(t => (
+                            ) : inquilinos.map(t => (
                                 <tr key={t.id} className="hover:bg-gray-50/50 transition-colors">
                                     <td className="px-6 py-4 text-sm font-medium">{t.nome_completo}</td>
                                     <td className="px-6 py-4 text-sm hidden sm:table-cell font-mono">{t.cpf}</td>
@@ -170,7 +188,14 @@ export default function InquilinosPage() {
                 </div>
             </div>
 
-            <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />
+            {pagination && (
+                <Pagination
+                    currentPage={pagination.page}
+                    totalPages={pagination.totalPages}
+                    onPageChange={setCurrentPage}
+                    onLimitChange={setItemsPerPage}
+                />
+            )}
 
             {/* Modal Form */}
             {showForm && (

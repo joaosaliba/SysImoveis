@@ -8,6 +8,7 @@ const inquilinosRoutes = require('./routes/inquilinos');
 const contratosRoutes = require('./routes/contratos');
 const dashboardRoutes = require('./routes/dashboard');
 const unidadesRoutes = require('./routes/unidades');
+const relatoriosRoutes = require('./routes/relatorios');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -29,6 +30,7 @@ app.use('/api/inquilinos', inquilinosRoutes);
 app.use('/api/contratos', contratosRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/unidades', unidadesRoutes);
+app.use('/api/relatorios', relatoriosRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

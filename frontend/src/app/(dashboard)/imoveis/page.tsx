@@ -34,6 +34,18 @@ interface Propriedade {
     unidades?: Unidade[];
 }
 
+interface PaginatedResponse {
+    data: Propriedade[];
+    pagination: {
+        total: number;
+        page: number;
+        limit: number;
+        totalPages: number;
+        hasNext: boolean;
+        hasPrev: boolean;
+    };
+}
+
 const TIPOS_UNIDADE = ['Apartamento', 'Loja', 'Sala Comercial', 'Casa', 'Kitnet', 'Galpão', 'Sobrado', 'Outro'];
 const UFS = ['AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG', 'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO'];
 
@@ -47,7 +59,7 @@ const emptyUnitForm = {
 };
 
 export default function ImoveisPage() {
-    const [propriedades, setPropriedades] = useState<Propriedade[]>([]);
+    const [paginationData, setPaginationData] = useState<PaginatedResponse | null>(null);
     const [search, setSearch] = useState('');
     const [showPropForm, setShowPropForm] = useState(false);
     const [editingProp, setEditingProp] = useState<Propriedade | null>(null);
@@ -67,21 +79,27 @@ export default function ImoveisPage() {
     const [unitError, setUnitError] = useState('');
 
     const [currentPage, setCurrentPage] = useState(1);
-    const itemsPerPage = 10;
+    const [itemsPerPage, setItemsPerPage] = useState(10);
 
 
     const loadData = useCallback(async () => {
+        setLoading(true);
         try {
-            const data = await api.get(`/propriedades${search ? `?search=${search}` : ''}`);
-            setPropriedades(data);
+            const params = new URLSearchParams();
+            params.set('page', currentPage.toString());
+            params.set('limit', itemsPerPage.toString());
+            if (search) params.set('search', search);
+
+            const response = await api.get(`/propriedades?${params.toString()}`);
+            setPaginationData(response);
         } catch (err) { console.error(err); }
         finally { setLoading(false); }
-    }, [search]);
+    }, [search, currentPage, itemsPerPage]);
 
     useEffect(() => { loadData(); }, [loadData]);
 
-    const totalPages = Math.ceil(propriedades.length / itemsPerPage);
-    const paginatedPropriedades = propriedades.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+    const propriedades = paginationData?.data || [];
+    const pagination = paginationData?.pagination;
 
     // -- Property CRUD --
     const openNewProp = () => { setPropForm(emptyPropForm); setEditingProp(null); setShowPropForm(true); setError(''); };
@@ -259,7 +277,7 @@ export default function ImoveisPage() {
                         <Building2 className="w-12 h-12 text-gray-300 mx-auto mb-3" />
                         <p className="text-[var(--color-text-muted)]">Nenhum imóvel encontrado</p>
                     </div>
-                ) : paginatedPropriedades.map(p => (
+                ) : propriedades.map(p => (
                     <div key={p.id} className="bg-white rounded-2xl shadow-sm border border-[var(--color-border)] overflow-hidden">
                         {/* Property Row */}
                         <div className="flex items-center gap-4 px-6 py-4 hover:bg-gray-50/50 transition-colors">
@@ -367,7 +385,14 @@ export default function ImoveisPage() {
 
                 {/* Pagination */}
                 <div className="pt-4">
-                    <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />
+                    {pagination && (
+                        <Pagination
+                            currentPage={pagination.page}
+                            totalPages={pagination.totalPages}
+                            onPageChange={setCurrentPage}
+                            onLimitChange={setItemsPerPage}
+                        />
+                    )}
                 </div>
             </div>
 

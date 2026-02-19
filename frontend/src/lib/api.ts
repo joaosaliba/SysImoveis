@@ -90,6 +90,9 @@ async function refreshToken(): Promise<boolean> {
         const data = await res.json();
         localStorage.setItem('accessToken', data.accessToken);
         localStorage.setItem('refreshToken', data.refreshToken);
+        if (data.user) {
+            localStorage.setItem('user', JSON.stringify(data.user));
+        }
         return true;
     } catch {
         return false;
@@ -154,4 +157,27 @@ export function getUser() {
 export function isAuthenticated() {
     if (typeof window === 'undefined') return false;
     return !!localStorage.getItem('accessToken');
+}
+
+export function getUserRole(): string | null {
+    if (typeof window === 'undefined') return null;
+    const user = getUser();
+    return user?.role || null;
+}
+
+export function hasRole(allowedRoles: string | string[]): boolean {
+    if (typeof window === 'undefined') return false;
+    const user = getUser();
+    if (!user || !user.role) return false;
+    
+    const roles = Array.isArray(allowedRoles) ? allowedRoles : [allowedRoles];
+    return roles.includes(user.role);
+}
+
+export function isAdmin(): boolean {
+    return hasRole('admin');
+}
+
+export function isGestor(): boolean {
+    return hasRole(['admin', 'gestor']);
 }

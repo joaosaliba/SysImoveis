@@ -3,7 +3,12 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { api } from '@/lib/api';
-import { Building2, Users, FileText, AlertTriangle, DollarSign, ArrowRight, DoorOpen } from 'lucide-react';
+import { Building2, Users, FileText, AlertTriangle, DollarSign, ArrowRight, DoorOpen, TrendingUp, PieChart as PieChartIcon } from 'lucide-react';
+import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement, PointElement, LineElement } from 'chart.js';
+import { Pie, Bar, Line } from 'react-chartjs-2';
+
+// Register ChartJS components
+ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement, PointElement, LineElement);
 
 interface DashboardStats {
     total_propriedades: number;
@@ -14,13 +19,44 @@ interface DashboardStats {
     receita_mensal: number;
 }
 
+interface OcupacaoData {
+    total: number;
+    alugadas: number;
+    disponiveis: number;
+    manutencao: number;
+    taxa_ocupacao: string;
+}
+
+interface ReceitaMensalData {
+    mes: string;
+    total: number;
+}
+
+interface ContratosStatusData {
+    status: string;
+    total: number;
+}
+
 export default function DashboardPage() {
     const [stats, setStats] = useState<DashboardStats | null>(null);
+    const [ocupacao, setOcupacao] = useState<OcupacaoData | null>(null);
+    const [receitaMensal, setReceitaMensal] = useState<ReceitaMensalData[]>([]);
+    const [contratosStatus, setContratosStatus] = useState<ContratosStatusData[]>([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        api.get('/dashboard')
-            .then(setStats)
+        Promise.all([
+            api.get('/dashboard'),
+            api.get('/dashboard/ocupacao'),
+            api.get('/dashboard/receita-mensal'),
+            api.get('/dashboard/contratos-status'),
+        ])
+            .then(([statsRes, ocupacaoRes, receitaRes, statusRes]) => {
+                setStats(statsRes);
+                setOcupacao(ocupacaoRes);
+                setReceitaMensal(receitaRes);
+                setContratosStatus(statusRes);
+            })
             .catch(console.error)
             .finally(() => setLoading(false));
     }, []);
@@ -64,9 +100,74 @@ export default function DashboardPage() {
             icon: AlertTriangle,
             color: stats.parcelas_atrasadas > 0 ? 'from-red-500 to-red-600' : 'from-gray-400 to-gray-500',
             shadow: stats.parcelas_atrasadas > 0 ? 'shadow-red-500/25' : 'shadow-gray-400/25',
-            href: '/contratos',
+            href: '/boletos?status=atrasado',
         },
     ] : [];
+
+    // Chart data
+    const ocupacaoChartData = ocupacao ? {
+        labels: ['Alugadas', 'Disponíveis', 'Manutenção'],
+        datasets: [{
+            label: 'Unidades',
+            data: [ocupacao.alugadas, ocupacao.disponiveis, ocupacao.manutencao],
+            backgroundColor: [
+                'rgba(34, 197, 94, 0.8)',
+                'rgba(59, 130, 246, 0.8)',
+                'rgba(234, 179, 8, 0.8)',
+            ],
+            borderColor: [
+                'rgb(34, 197, 94)',
+                'rgb(59, 130, 246)',
+                'rgb(234, 179, 8)',
+            ],
+            borderWidth: 2,
+        }],
+    } : null;
+
+    const receitaChartData = receitaMensal.length > 0 ? {
+        labels: receitaMensal.map(r => r.mes),
+        datasets: [{
+            label: 'Receita (R$)',
+            data: receitaMensal.map(r => r.total),
+            backgroundColor: 'rgba(34, 197, 94, 0.2)',
+            borderColor: 'rgb(34, 197, 94)',
+            borderWidth: 2,
+            tension: 0.4,
+            fill: true,
+        }],
+    } : null;
+
+    const contratosStatusChartData = contratosStatus.length > 0 ? {
+        labels: contratosStatus.map(c => c.status),
+        datasets: [{
+            label: 'Contratos',
+            data: contratosStatus.map(c => c.total),
+            backgroundColor: [
+                'rgba(34, 197, 94, 0.8)',
+                'rgba(234, 179, 8, 0.8)',
+                'rgba(239, 68, 68, 0.8)',
+                'rgba(107, 114, 128, 0.8)',
+            ],
+            borderColor: [
+                'rgb(34, 197, 94)',
+                'rgb(234, 179, 8)',
+                'rgb(239, 68, 68)',
+                'rgb(107, 114, 128)',
+            ],
+            borderWidth: 2,
+        }],
+    } : null;
+
+    const chartOptions = {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: {
+                display: true,
+                position: 'bottom' as const,
+            },
+        },
+    };
 
     return (
         <div className="space-y-8 pt-10 md:pt-0">
@@ -127,6 +228,61 @@ export default function DashboardPage() {
                                         R$ {stats.receita_mensal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                                     </p>
                                 </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Charts Section */}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        {/* Occupancy Pie Chart */}
+                        {ocupacao && ocupacaoChartData && (
+                            <div className="bg-white rounded-2xl shadow-sm border border-[var(--color-border)] p-6">
+                                <div className="flex items-center justify-between mb-4">
+                                    <div className="flex items-center gap-3">
+                                        <div className="p-2 rounded-lg bg-blue-50">
+                                            <PieChartIcon className="w-5 h-5 text-blue-600" />
+                                        </div>
+                                        <div>
+                                            <h3 className="text-base font-semibold text-[var(--color-text)]">Ocupação das Unidades</h3>
+                                            <p className="text-xs text-[var(--color-text-muted)]">
+                                                Taxa: <span className="font-semibold text-green-600">{ocupacao.taxa_ocupacao}%</span>
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="h-64">
+                                    <Pie data={ocupacaoChartData} options={chartOptions} />
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Contracts Status Bar Chart */}
+                        {contratosStatus.length > 0 && contratosStatusChartData && (
+                            <div className="bg-white rounded-2xl shadow-sm border border-[var(--color-border)] p-6">
+                                <div className="flex items-center gap-3 mb-4">
+                                    <div className="p-2 rounded-lg bg-violet-50">
+                                        <FileText className="w-5 h-5 text-violet-600" />
+                                    </div>
+                                    <h3 className="text-base font-semibold text-[var(--color-text)]">Status dos Contratos</h3>
+                                </div>
+                                <div className="h-64">
+                                    <Bar data={contratosStatusChartData} options={{ ...chartOptions, plugins: { legend: { display: false } } }} />
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Revenue Line Chart */}
+                    {receitaMensal.length > 0 && receitaChartData && (
+                        <div className="bg-white rounded-2xl shadow-sm border border-[var(--color-border)] p-6">
+                            <div className="flex items-center gap-3 mb-4">
+                                <div className="p-2 rounded-lg bg-green-50">
+                                    <TrendingUp className="w-5 h-5 text-green-600" />
+                                </div>
+                                <h3 className="text-base font-semibold text-[var(--color-text)]">Receita Mensal (Últimos 12 meses)</h3>
+                            </div>
+                            <div className="h-72">
+                                <Line data={receitaChartData} options={chartOptions} />
                             </div>
                         </div>
                     )}

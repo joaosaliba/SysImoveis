@@ -1,25 +1,36 @@
 const express = require('express');
 const pool = require('../db/pool');
 const { verifyToken } = require('../middleware/auth');
+const { getPaginationParams, formatPaginatedResponse } = require('../db/pagination');
 
 const router = express.Router();
 router.use(verifyToken);
 
-// List all tenants (with optional search)
+// List all tenants (with optional search and pagination)
 router.get('/', async (req, res) => {
     try {
-        const { search } = req.query;
-        let query = 'SELECT * FROM inquilinos';
+        const { search, page, limit } = req.query;
+        const { offset, limit: limitNum, page: pageNum } = getPaginationParams(page, limit);
+
+        let whereClause = '';
         let params = [];
 
         if (search) {
-            query += ` WHERE nome_completo ILIKE $1 OR cpf ILIKE $1`;
+            whereClause = ` WHERE nome_completo ILIKE $1 OR cpf ILIKE $1`;
             params = [`%${search}%`];
         }
 
-        query += ' ORDER BY created_at DESC';
-        const result = await pool.query(query, params);
-        res.json(result.rows);
+        // Count total
+        const countQuery = `SELECT COUNT(*) FROM inquilinos${whereClause}`;
+        const countResult = await pool.query(countQuery, params);
+        const total = parseInt(countResult.rows[0].count);
+
+        // Get paginated data
+        const dataQuery = `SELECT * FROM inquilinos ${whereClause} ORDER BY created_at DESC LIMIT $1 OFFSET $2`;
+        const dataParams = [...params, limitNum, offset];
+        const result = await pool.query(dataQuery, dataParams);
+
+        res.json(formatPaginatedResponse(result.rows, total, pageNum, limitNum));
     } catch (err) {
         console.error('List tenants error:', err);
         res.status(500).json({ error: 'Erro ao listar inquilinos.' });

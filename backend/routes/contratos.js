@@ -1,14 +1,13 @@
 const express = require('express');
 const pool = require('../db/pool');
 const { verifyToken } = require('../middleware/auth');
+const { getPaginationParams, formatPaginatedResponse } = require('../db/pagination');
 
 const router = express.Router();
 router.use(verifyToken);
 
 const isValidUUID = (id) => /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(id);
 const isValidDate = (d) => !isNaN(Date.parse(d));
-
-
 
 // Helper: generate installments for a contract
 function generateParcelas(dataInicio, dataFim, valorInicial, diaVencimento, breakdown = {}) {
@@ -18,13 +17,7 @@ function generateParcelas(dataInicio, dataFim, valorInicial, diaVencimento, brea
     let current = new Date(start);
     let numero = 1;
 
-    // Breakdown defaults
-    const {
-        valor_iptu = 0,
-        valor_agua = 0,
-        valor_luz = 0,
-        valor_outros = 0
-    } = breakdown;
+    const { valor_iptu = 0, valor_agua = 0, valor_luz = 0, valor_outros = 0 } = breakdown;
 
     while (current < end) {
         const periodoInicio = new Date(current);
@@ -65,11 +58,46 @@ function generateParcelas(dataInicio, dataFim, valorInicial, diaVencimento, brea
     return parcelas;
 }
 
-// List all contracts (with joins)
+// List all contracts (with joins and pagination)
 router.get('/', async (req, res) => {
     try {
-        const result = await pool.query(`
-      SELECT c.*, 
+        const { page, limit, status, imovel_id, inquilino_id } = req.query;
+        const { offset, limit: limitNum, page: pageNum } = getPaginationParams(page, limit);
+
+        let whereClause = 'WHERE 1=1';
+        let params = [];
+        let paramIndex = 1;
+
+        if (status && status !== 'todos') {
+            if (status === 'encerrado') {
+                whereClause += ` AND c.status_encerrado = true`;
+            } else if (status === 'ativo') {
+                whereClause += ` AND c.status_encerrado = false`;
+            }
+        }
+        if (imovel_id && isValidUUID(imovel_id)) {
+            whereClause += ` AND p.id = $${paramIndex++}`;
+            params.push(imovel_id);
+        }
+        if (inquilino_id && isValidUUID(inquilino_id)) {
+            whereClause += ` AND c.inquilino_id = $${paramIndex++}`;
+            params.push(inquilino_id);
+        }
+
+        // Count total
+        const countQuery = `
+      SELECT COUNT(*) FROM contratos c
+      JOIN inquilinos i ON c.inquilino_id = i.id
+      JOIN unidades u ON c.unidade_id = u.id
+      JOIN propriedades p ON u.propriedade_id = p.id
+      ${whereClause}
+    `;
+        const countResult = await pool.query(countQuery, params);
+        const total = parseInt(countResult.rows[0].count);
+
+        // Get paginated data
+        const dataQuery = `
+      SELECT c.*,
         i.nome_completo AS inquilino_nome, i.cpf AS inquilino_cpf, i.restricoes AS inquilino_restricoes,
         u.identificador AS unidade_identificador, u.tipo_unidade,
         p.endereco AS imovel_endereco, p.numero AS imovel_numero, p.cidade AS imovel_cidade, p.nome AS imovel_nome
@@ -77,9 +105,14 @@ router.get('/', async (req, res) => {
       JOIN inquilinos i ON c.inquilino_id = i.id
       JOIN unidades u ON c.unidade_id = u.id
       JOIN propriedades p ON u.propriedade_id = p.id
+      ${whereClause}
       ORDER BY c.created_at DESC
-    `);
-        res.json(result.rows);
+      LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
+    `;
+        const dataParams = [...params, limitNum, offset];
+        const result = await pool.query(dataQuery, dataParams);
+
+        res.json(formatPaginatedResponse(result.rows, total, pageNum, limitNum));
     } catch (err) {
         console.error('List contracts error:', err);
         res.status(500).json({ error: 'Erro ao listar contratos.' });
@@ -455,8 +488,14 @@ router.get('/parcelas/filtro', async (req, res) => {
         }
         const validStatuses = ['pendente', 'pago', 'atrasado', 'cancelado'];
         if (status && status !== 'todos' && validStatuses.includes(status)) {
-            query += ` AND cp.status_pagamento = $${paramIndex++}`;
-            params.push(status);
+            if (status === 'atrasado') {
+                query += ` AND (cp.status_pagamento = 'atrasado' OR (cp.status_pagamento = 'pendente' AND cp.data_vencimento < CURRENT_DATE))`;
+            } else if (status === 'pendente') {
+                query += ` AND cp.status_pagamento = 'pendente' AND cp.data_vencimento >= CURRENT_DATE`;
+            } else {
+                query += ` AND cp.status_pagamento = $${paramIndex++}`;
+                params.push(status);
+            }
         }
         if (imovel_id && isValidUUID(imovel_id)) {
             query += ` AND p.id = $${paramIndex++}`;
@@ -602,8 +641,12 @@ router.post('/parcelas/bulk-update', async (req, res) => {
         // Update all
         await client.query(
             `UPDATE contrato_parcelas 
-             SET status_pagamento = $1, updated_at = NOW(),
-                 data_pagamento = CASE WHEN $1 = 'pago' THEN CURRENT_DATE ELSE data_pagamento END
+             SET status_pagamento = $1, 
+                 updated_at = NOW(),
+                 data_pagamento = CASE 
+                    WHEN $1 = 'pago' THEN COALESCE(data_pagamento, CURRENT_DATE)
+                    ELSE data_pagamento 
+                 END
              WHERE id = ANY($2::uuid[])`,
             [status, ids]
         );
@@ -612,8 +655,8 @@ router.post('/parcelas/bulk-update', async (req, res) => {
         res.json({ message: 'Parcelas atualizadas com sucesso.' });
     } catch (err) {
         await client.query('ROLLBACK');
-        console.error('Bulk update error:', err);
-        res.status(500).json({ error: 'Erro ao atualizar parcelas.' });
+        console.error('CRITICAL: Bulk update error:', err);
+        res.status(500).json({ error: 'Erro ao atualizar parcelas.', details: err.message });
     } finally {
         client.release();
     }

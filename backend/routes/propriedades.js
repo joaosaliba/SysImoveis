@@ -1,30 +1,47 @@
 const express = require('express');
 const pool = require('../db/pool');
 const { verifyToken } = require('../middleware/auth');
+const { getPaginationParams, formatPaginatedResponse } = require('../db/pagination');
 
 const router = express.Router();
 router.use(verifyToken);
 
-// List all properties (with optional search)
+// List all properties (with optional search and pagination)
 router.get('/', async (req, res) => {
     try {
-        const { search } = req.query;
-        let query = `
-      SELECT p.*, 
+        const { search, page, limit } = req.query;
+        const { offset, limit: limitNum, page: pageNum } = getPaginationParams(page, limit);
+
+        // Build WHERE clause
+        let whereClause = '';
+        let params = [];
+        let paramIndex = 1;
+
+        if (search) {
+            whereClause = ` WHERE p.endereco ILIKE $${paramIndex} OR p.cidade ILIKE $${paramIndex} OR p.administrador ILIKE $${paramIndex} OR p.nome ILIKE $${paramIndex}`;
+            params = [`%${search}%`];
+            paramIndex++;
+        }
+
+        // Count total records
+        const countQuery = `SELECT COUNT(*) FROM propriedades p${whereClause}`;
+        const countResult = await pool.query(countQuery, params);
+        const total = parseInt(countResult.rows[0].count);
+
+        // Get paginated data
+        const dataQuery = `
+      SELECT p.*,
         (SELECT COUNT(*) FROM unidades u WHERE u.propriedade_id = p.id) as total_unidades,
         (SELECT COUNT(*) FROM unidades u WHERE u.propriedade_id = p.id AND u.status = 'alugado') as unidades_alugadas
       FROM propriedades p
+      ${whereClause}
+      ORDER BY p.created_at DESC
+      LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
     `;
-        let params = [];
+        const dataParams = [...params, limitNum, offset];
+        const result = await pool.query(dataQuery, dataParams);
 
-        if (search) {
-            query += ` WHERE p.endereco ILIKE $1 OR p.cidade ILIKE $1 OR p.administrador ILIKE $1 OR p.nome ILIKE $1`;
-            params = [`%${search}%`];
-        }
-
-        query += ' ORDER BY p.created_at DESC';
-        const result = await pool.query(query, params);
-        res.json(result.rows);
+        res.json(formatPaginatedResponse(result.rows, total, pageNum, limitNum));
     } catch (err) {
         console.error('List properties error:', err);
         res.status(500).json({ error: 'Erro ao listar propriedades.' });
