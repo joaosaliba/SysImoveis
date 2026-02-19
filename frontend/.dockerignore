@@ -5,3 +5,12 @@ node_modules
 README.md
 .env.local
 .env.production
+Dockerfile
+docker-compose.yml
+.claude
+CLAUDE.md
+TASK.md
+.gemini
+.agent
+brain
+package-lock.json

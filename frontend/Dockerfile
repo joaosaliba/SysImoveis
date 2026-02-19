@@ -1,5 +1,5 @@
 # Stage 1: Build
-FROM node:20-slim AS builder
+FROM node:20-alpine AS builder
 
 WORKDIR /app
 
@@ -10,24 +10,25 @@ COPY . .
 
 ARG BACKEND_URL
 ENV BACKEND_URL=$BACKEND_URL
+ENV NODE_OPTIONS="--max-old-space-size=768"
 
 RUN npm run build
 
 # Stage 2: Runner
-FROM node:20-slim
+FROM node:20-alpine AS runner
 
 WORKDIR /app
 
 ENV NODE_ENV=production
 
 # Copy necessary files from builder
-COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public
-COPY --from=builder /app/package*.json ./
-COPY --from=builder /app/next.config.ts ./
-
-RUN npm install --omit=dev
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
 
 EXPOSE 3000
 
-CMD ["npm", "start"]
+ENV PORT 3000
+ENV HOSTNAME "0.0.0.0"
+
+CMD ["node", "server.js"]

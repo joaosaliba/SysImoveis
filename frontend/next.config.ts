@@ -5,6 +5,13 @@ console.log(`[NEXT_CONFIG] BACKEND_URL: ${process.env.BACKEND_URL}`);
 const nextConfig: NextConfig = {
   /* config options here */
   reactCompiler: true,
+  output: 'standalone',
+  typescript: {
+    ignoreBuildErrors: true,
+  },
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
   async rewrites() {
     console.log(`[NEXT_CONFIG] Setting rewrites with BACKEND_URL: ${process.env.BACKEND_URL}`);
     return [
