@@ -10,15 +10,12 @@ const nextConfig: NextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
   async rewrites() {
     console.log(`[NEXT_CONFIG] Setting rewrites with BACKEND_URL: ${process.env.BACKEND_URL}`);
     return [
       {
         source: '/api/:path*',
-        destination: `${process.env.BACKEND_URL || 'http://localhost:3001'}/api/:path*`,
+        destination: `${process.env.BACKEND_URL || 'http://127.0.0.1:3001'}/api/:path*`,
       },
     ];
   },

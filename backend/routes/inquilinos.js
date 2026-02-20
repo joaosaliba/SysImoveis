@@ -1,6 +1,7 @@
 const express = require('express');
 const pool = require('../db/pool');
 const { verifyToken } = require('../middleware/auth');
+const { checkSubscriptionLimit } = require('../middleware/subscription');
 const { getPaginationParams, formatPaginatedResponse } = require('../db/pagination');
 
 const router = express.Router();
@@ -10,14 +11,17 @@ router.use(verifyToken);
 router.get('/', async (req, res) => {
     try {
         const { search, page, limit } = req.query;
+        const { realm_id } = req.user;
         const { offset, limit: limitNum, page: pageNum } = getPaginationParams(page, limit);
 
-        let whereClause = '';
-        let params = [];
+        let whereClause = ' WHERE realm_id = $1';
+        let params = [realm_id];
+        let paramIndex = 2;
 
         if (search) {
-            whereClause = ` WHERE nome_completo ILIKE $1 OR cpf ILIKE $1`;
-            params = [`%${search}%`];
+            whereClause += ` AND (nome_completo ILIKE $${paramIndex} OR cpf ILIKE $${paramIndex})`;
+            params.push(`%${search}%`);
+            paramIndex++;
         }
 
         // Count total
@@ -26,7 +30,7 @@ router.get('/', async (req, res) => {
         const total = parseInt(countResult.rows[0].count);
 
         // Get paginated data
-        const dataQuery = `SELECT * FROM inquilinos ${whereClause} ORDER BY created_at DESC LIMIT $1 OFFSET $2`;
+        const dataQuery = `SELECT * FROM inquilinos ${whereClause} ORDER BY created_at DESC LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
         const dataParams = [...params, limitNum, offset];
         const result = await pool.query(dataQuery, dataParams);
 
@@ -40,7 +44,8 @@ router.get('/', async (req, res) => {
 // Get single tenant
 router.get('/:id', async (req, res) => {
     try {
-        const result = await pool.query('SELECT * FROM inquilinos WHERE id = $1', [req.params.id]);
+        const { realm_id } = req.user;
+        const result = await pool.query('SELECT * FROM inquilinos WHERE id = $1 AND realm_id = $2', [req.params.id, realm_id]);
         if (result.rows.length === 0) {
             return res.status(404).json({ error: 'Inquilino não encontrado.' });
         }
@@ -52,7 +57,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // Create tenant
-router.post('/', async (req, res) => {
+router.post('/', checkSubscriptionLimit('inquilinos'), async (req, res) => {
     try {
         const { cpf, nome_completo, rg, orgao_emissor, uf_rg, telefones, email, observacoes, restricoes } = req.body;
 
@@ -60,16 +65,17 @@ router.post('/', async (req, res) => {
             return res.status(400).json({ error: 'CPF e nome completo são obrigatórios.' });
         }
 
-        const existing = await pool.query('SELECT id FROM inquilinos WHERE cpf = $1', [cpf]);
+        const { realm_id } = req.user;
+        const existing = await pool.query('SELECT id FROM inquilinos WHERE cpf = $1 AND realm_id = $2', [cpf, realm_id]);
         if (existing.rows.length > 0) {
-            return res.status(409).json({ error: 'CPF já cadastrado.' });
+            return res.status(409).json({ error: 'CPF já cadastrado neste realm.' });
         }
 
         const result = await pool.query(
-            `INSERT INTO inquilinos (cpf, nome_completo, rg, orgao_emissor, uf_rg, telefones, email, observacoes, restricoes)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            `INSERT INTO inquilinos (realm_id, cpf, nome_completo, rg, orgao_emissor, uf_rg, telefones, email, observacoes, restricoes)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
        RETURNING *`,
-            [cpf, nome_completo, rg, orgao_emissor, uf_rg, JSON.stringify(telefones || []), email, observacoes, restricoes]
+            [realm_id, cpf, nome_completo, rg, orgao_emissor, uf_rg, JSON.stringify(telefones || []), email, observacoes, restricoes]
         );
 
         res.status(201).json(result.rows[0]);
@@ -84,6 +90,7 @@ router.put('/:id', async (req, res) => {
     try {
         const { cpf, nome_completo, rg, orgao_emissor, uf_rg, telefones, email, observacoes, restricoes } = req.body;
 
+        const { realm_id } = req.user;
         const result = await pool.query(
             `UPDATE inquilinos SET
         cpf = COALESCE($1, cpf),
@@ -96,8 +103,8 @@ router.put('/:id', async (req, res) => {
         observacoes = COALESCE($8, observacoes),
         restricoes = COALESCE($9, restricoes),
         updated_at = NOW()
-       WHERE id = $10 RETURNING *`,
-            [cpf, nome_completo, rg, orgao_emissor, uf_rg, telefones ? JSON.stringify(telefones) : null, email, observacoes, restricoes, req.params.id]
+       WHERE id = $10 AND realm_id = $11 RETURNING *`,
+            [cpf, nome_completo, rg, orgao_emissor, uf_rg, telefones ? JSON.stringify(telefones) : null, email, observacoes, restricoes, req.params.id, realm_id]
         );
 
         if (result.rows.length === 0) {
@@ -117,7 +124,8 @@ router.put('/:id', async (req, res) => {
 // Delete tenant
 router.delete('/:id', async (req, res) => {
     try {
-        const result = await pool.query('DELETE FROM inquilinos WHERE id = $1 RETURNING id', [req.params.id]);
+        const { realm_id } = req.user;
+        const result = await pool.query('DELETE FROM inquilinos WHERE id = $1 AND realm_id = $2 RETURNING id', [req.params.id, realm_id]);
         if (result.rows.length === 0) {
             return res.status(404).json({ error: 'Inquilino não encontrado.' });
         }

@@ -15,8 +15,9 @@ import {
     X,
     Banknote,
     ShieldCheck,
+    CreditCard,
 } from 'lucide-react';
-import { logout, getUser, isAdmin } from '@/lib/api';
+import { logout, getUser, isAdmin, isGestor, isSystemAdmin } from '@/lib/api';
 
 const navItems = [
     { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -30,16 +31,26 @@ const adminItems = [
     { href: '/usuarios', label: 'Usuários', icon: ShieldCheck },
 ];
 
-export default function Sidebar() {
+const systemAdminItems = [
+    { href: '/admin/system', label: 'Painel do Sistema', icon: LayoutDashboard },
+];
+
+const subscriptionItem = [
+    { href: '/assinatura', label: 'Assinatura', icon: CreditCard },
+];
+
+const Sidebar = () => {
     const [collapsed, setCollapsed] = useState(false);
     const [mobileOpen, setMobileOpen] = useState(false);
     const router = useRouter();
     const [user, setUser] = useState<{ nome: string } | null>(null);
     const [admin, setAdmin] = useState(false);
+    const [systemAdmin, setSystemAdmin] = useState(false);
 
     useEffect(() => {
         setUser(getUser());
         setAdmin(isAdmin());
+        setSystemAdmin(isSystemAdmin());
     }, []);
 
     const handleLogout = () => {
@@ -122,6 +133,66 @@ export default function Sidebar() {
                         );
                     })}
 
+                    {/* Subscription section - visible for admins and gestors */}
+                    {(admin || isGestor()) && (
+                        <>
+                            {!collapsed && (
+                                <div className="py-2 mt-2 border-t border-white/10">
+                                    <p className="px-3 text-xs text-white/40 uppercase">Assinatura</p>
+                                </div>
+                            )}
+                            {subscriptionItem.map((item: any) => {
+                                const Icon = item.icon;
+                                return (
+                                    <Link
+                                        key={item.href}
+                                        href={item.href}
+                                        onClick={() => setMobileOpen(false)}
+                                        className={`
+                      flex items-center gap-3 px-3 py-3 rounded-xl
+                      text-white/80 hover:text-white hover:bg-[var(--color-sidebar-hover)]
+                      transition-all duration-200
+                      ${collapsed ? 'justify-center' : ''}
+                    `}
+                                    >
+                                        <Icon className="w-5 h-5 shrink-0" />
+                                        {!collapsed && <span className="text-sm font-medium">{item.label}</span>}
+                                    </Link>
+                                );
+                            })}
+                        </>
+                    )}
+
+                    {/* Global Admin section */}
+                    {systemAdmin && (
+                        <>
+                            {!collapsed && (
+                                <div className="py-2 mt-2 border-t border-white/10">
+                                    <p className="px-3 text-xs text-white/40 uppercase">Acesso Total</p>
+                                </div>
+                            )}
+                            {systemAdminItems.map((item: any) => {
+                                const Icon = item.icon;
+                                return (
+                                    <Link
+                                        key={item.href}
+                                        href={item.href}
+                                        onClick={() => setMobileOpen(false)}
+                                        className={`
+                      flex items-center gap-3 px-3 py-3 rounded-xl
+                      text-white/80 hover:text-white hover:bg-[var(--color-sidebar-hover)]
+                      transition-all duration-200
+                      ${collapsed ? 'justify-center' : ''}
+                    `}
+                                    >
+                                        <Icon className="w-5 h-5 shrink-0" />
+                                        {!collapsed && <span className="text-sm font-medium">{item.label}</span>}
+                                    </Link>
+                                );
+                            })}
+                        </>
+                    )}
+
                     {/* Admin-only section */}
                     {admin && (
                         <>
@@ -130,7 +201,7 @@ export default function Sidebar() {
                                     <p className="px-3 text-xs text-white/40 uppercase">Administração</p>
                                 </div>
                             )}
-                            {adminItems.map((item) => {
+                            {adminItems.map((item: any) => {
                                 const Icon = item.icon;
                                 return (
                                     <Link
@@ -174,4 +245,6 @@ export default function Sidebar() {
             </aside>
         </>
     );
-}
+};
+
+export default Sidebar;

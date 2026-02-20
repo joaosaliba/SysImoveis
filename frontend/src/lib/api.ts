@@ -31,11 +31,13 @@ async function request(endpoint: string, options: RequestInit = {}) {
 
     // If we get HTML instead of JSON for an API call, it means the proxy hit a 404/500 page
     if (res.headers.get('content-type')?.includes('text/html')) {
-        console.error('[API] Received HTML instead of JSON. Proxy might be misconfigured.');
+        const text = await res.text();
+        console.error(`[API] Received HTML instead of JSON for ${url}. Proxy might be misconfigured.`);
+        console.error(`[API] HTML Snippet: ${text.substring(0, 200)}...`);
         if (typeof window === 'undefined') {
             // On server, we can try direct backend injection
-            url = `${backendUrl}/api${endpoint}`;
-            res = await fetch(url, { ...options, headers });
+            const directUrl = `${backendUrl}/api${endpoint}`;
+            res = await fetch(directUrl, { ...options, headers });
         }
     }
 
@@ -169,13 +171,82 @@ export function hasRole(allowedRoles: string | string[]): boolean {
     if (typeof window === 'undefined') return false;
     const user = getUser();
     if (!user || !user.role) return false;
-    
+
     const roles = Array.isArray(allowedRoles) ? allowedRoles : [allowedRoles];
     return roles.includes(user.role);
 }
 
+export async function getSubscriptionPlans() {
+    try {
+        return await api.get('/assinaturas/planos');
+    } catch (error) {
+        console.error('Error fetching subscription plans:', error);
+        throw error;
+    }
+}
+
+export async function getCurrentSubscription() {
+    try {
+        return await api.get('/assinaturas/minha-assinatura');
+    } catch (error) {
+        console.error('Error fetching current subscription:', error);
+        throw error;
+    }
+}
+
+export async function createSubscription(planoId: string) {
+    try {
+        return await api.post('/assinaturas/criar-assinatura', { plano_id: planoId });
+    } catch (error) {
+        console.error('Error creating subscription:', error);
+        throw error;
+    }
+}
+
+export async function changePlan(planoId: string) {
+    try {
+        return await api.post('/assinaturas/alterar-plano', { plano_id: planoId });
+    } catch (error) {
+        console.error('Error changing plan:', error);
+        throw error;
+    }
+}
+
+export async function cancelSubscription() {
+    try {
+        return await api.post('/assinaturas/cancelar-assinatura', {});
+    } catch (error) {
+        console.error('Error canceling subscription:', error);
+        throw error;
+    }
+}
+
+export async function getBillingHistory() {
+    try {
+        return await api.get('/assinaturas/historico-pagamentos');
+    } catch (error) {
+        console.error('Error fetching billing history:', error);
+        throw error;
+    }
+}
+
+export async function checkAccess() {
+    try {
+        return await api.get('/assinaturas/verificar-acesso');
+    } catch (error) {
+        console.error('Error checking access:', error);
+        throw error;
+    }
+}
+
 export function isAdmin(): boolean {
     return hasRole('admin');
+}
+
+export function isSystemAdmin(): boolean {
+    if (typeof window === 'undefined') return false;
+    const user = getUser();
+    return user?.is_system_admin === true;
 }
 
 export function isGestor(): boolean {

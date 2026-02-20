@@ -24,8 +24,8 @@ router.get('/contrato/:id', async (req, res) => {
       JOIN inquilinos i ON c.inquilino_id = i.id
       JOIN unidades u ON c.unidade_id = u.id
       JOIN propriedades p ON u.propriedade_id = p.id
-      WHERE c.id = $1
-    `, [contratoId]);
+      WHERE c.id = $1 AND c.realm_id = $2
+    `, [contratoId, req.user.realm_id]);
 
         if (result.rows.length === 0) {
             return res.status(404).json({ error: 'Contrato não encontrado.' });
@@ -78,8 +78,8 @@ router.get('/boleto/:id', async (req, res) => {
       LEFT JOIN inquilinos i ON cp.inquilino_id = i.id OR c.inquilino_id = i.id
       LEFT JOIN unidades u ON cp.unidade_id = u.id OR c.unidade_id = u.id
       LEFT JOIN propriedades p ON u.propriedade_id = p.id
-      WHERE cp.id = $1
-    `, [parcelaId]);
+      WHERE cp.id = $1 AND cp.realm_id = $2
+    `, [parcelaId, req.user.realm_id]);
 
         if (result.rows.length === 0) {
             return res.status(404).json({ error: 'Parcela não encontrada.' });

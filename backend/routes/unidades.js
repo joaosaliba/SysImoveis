@@ -9,12 +9,12 @@ router.use(verifyToken);
 // List all units with pagination
 router.get('/', async (req, res) => {
     try {
-        const { page, limit, status, propriedade_id } = req.query;
+        const { realm_id } = req.user;
         const { offset, limit: limitNum, page: pageNum } = getPaginationParams(page, limit);
 
-        let whereClause = 'WHERE 1=1';
-        let params = [];
-        let paramIndex = 1;
+        let whereClause = 'WHERE realm_id = $1';
+        let params = [realm_id];
+        let paramIndex = 2;
 
         if (status && status !== 'todos') {
             whereClause += ` AND status = $${paramIndex++}`;

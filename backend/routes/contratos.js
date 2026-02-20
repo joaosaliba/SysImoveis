@@ -1,6 +1,7 @@
 const express = require('express');
 const pool = require('../db/pool');
 const { verifyToken } = require('../middleware/auth');
+const { checkSubscriptionLimit } = require('../middleware/subscription');
 const { getPaginationParams, formatPaginatedResponse } = require('../db/pagination');
 
 const router = express.Router();
@@ -68,11 +69,12 @@ function generateParcelas(dataInicio, dataFim, valorInicial, diaVencimento, brea
 router.get('/', async (req, res) => {
     try {
         const { page, limit, status, imovel_id, inquilino_id } = req.query;
+        const { realm_id } = req.user;
         const { offset, limit: limitNum, page: pageNum } = getPaginationParams(page, limit);
 
-        let whereClause = 'WHERE 1=1';
-        let params = [];
-        let paramIndex = 1;
+        let whereClause = 'WHERE c.realm_id = $1';
+        let params = [realm_id];
+        let paramIndex = 2;
 
         if (status && status !== 'todos') {
             if (status === 'encerrado') {
@@ -82,7 +84,7 @@ router.get('/', async (req, res) => {
             }
         }
         if (imovel_id && isValidUUID(imovel_id)) {
-            whereClause += ` AND p.id = $${paramIndex++}`;
+            whereClause += ` AND p.id = $${paramIndex++} AND p.realm_id = $1`;
             params.push(imovel_id);
         }
         if (inquilino_id && isValidUUID(inquilino_id)) {
@@ -128,6 +130,7 @@ router.get('/', async (req, res) => {
 // Get single contract with installments and renewals
 router.get('/:id', async (req, res) => {
     try {
+        const { realm_id } = req.user;
         const contractResult = await pool.query(`
       SELECT c.*, 
         i.nome_completo AS inquilino_nome, i.cpf AS inquilino_cpf, i.restricoes AS inquilino_restricoes,
@@ -137,21 +140,21 @@ router.get('/:id', async (req, res) => {
       JOIN inquilinos i ON c.inquilino_id = i.id
       JOIN unidades u ON c.unidade_id = u.id
       JOIN propriedades p ON u.propriedade_id = p.id
-      WHERE c.id = $1
-    `, [req.params.id]);
+      WHERE c.id = $1 AND c.realm_id = $2
+    `, [req.params.id, realm_id]);
 
         if (contractResult.rows.length === 0) {
             return res.status(404).json({ error: 'Contrato não encontrado.' });
         }
 
         const parcelasResult = await pool.query(
-            'SELECT * FROM contrato_parcelas WHERE contrato_id = $1 ORDER BY numero_parcela',
-            [req.params.id]
+            'SELECT * FROM contrato_parcelas WHERE contrato_id = $1 AND realm_id = $2 ORDER BY numero_parcela',
+            [req.params.id, realm_id]
         );
 
         const renovacoesResult = await pool.query(
-            'SELECT * FROM contrato_renovacoes WHERE contrato_id = $1 ORDER BY data_renovacao DESC',
-            [req.params.id]
+            'SELECT * FROM contrato_renovacoes WHERE contrato_id = $1 AND realm_id = $2 ORDER BY data_renovacao DESC',
+            [req.params.id, realm_id]
         );
 
         res.json({
@@ -171,6 +174,7 @@ router.post('/:id/renovar', async (req, res) => {
     try {
         await client.query('BEGIN');
         const contratoId = req.params.id;
+        const { realm_id } = req.user;
         const { nova_data_inicio, nova_data_fim, novo_valor, indice_reajuste, observacoes } = req.body;
 
         if (!nova_data_inicio || !nova_data_fim || !novo_valor) {
@@ -178,7 +182,7 @@ router.post('/:id/renovar', async (req, res) => {
         }
 
         // 1. Get current contract
-        const contractRes = await client.query('SELECT * FROM contratos WHERE id = $1', [contratoId]);
+        const contractRes = await client.query('SELECT * FROM contratos WHERE id = $1 AND realm_id = $2', [contratoId, realm_id]);
         if (contractRes.rows.length === 0) {
             await client.query('ROLLBACK');
             return res.status(404).json({ error: 'Contrato não encontrado.' });
@@ -186,10 +190,6 @@ router.post('/:id/renovar', async (req, res) => {
         const contrato = contractRes.rows[0];
 
         // 2. Overlap Validation
-        // A new period [nova_data_inicio, nova_data_fim] cannot overlap with segments of the same contract
-        // Historically, we only track the *current* period in `contratos`. 
-        // We should check if nova_data_inicio is AFTER the current end? Actually, the user might be extending it.
-        // The rule requested: "mensagem de erro caso periodo antigo se chocar com o novo"
         const currentStart = new Date(contrato.data_inicio);
         const currentEnd = new Date(contrato.data_fim);
         const newStart = new Date(nova_data_inicio);
@@ -203,27 +203,26 @@ router.post('/:id/renovar', async (req, res) => {
         // 3. Insert into history
         await client.query(
             `INSERT INTO contrato_renovacoes (
-                contrato_id, valor_anterior, valor_novo, 
+                realm_id, contrato_id, valor_anterior, valor_novo, 
                 data_inicio_novo, data_fim_novo, 
                 observacoes, indice_reajuste
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
             [
-                contratoId, contrato.valor_inicial, novo_valor,
+                realm_id, contratoId, contrato.valor_inicial, novo_valor,
                 nova_data_inicio, nova_data_fim,
                 observacoes, indice_reajuste
             ]
         );
 
         // 4. Update contract
-        // We update data_inicio and data_fim to the new period. We update valor_inicial to the new rent.
         const updatedContract = await client.query(
             `UPDATE contratos SET 
                 data_inicio = $1,
                 data_fim = $2, 
                 valor_inicial = $3,
                 updated_at = NOW()
-             WHERE id = $4 RETURNING *`,
-            [nova_data_inicio, nova_data_fim, novo_valor, contratoId]
+             WHERE id = $4 AND realm_id = $5 RETURNING *`,
+            [nova_data_inicio, nova_data_fim, novo_valor, contratoId, realm_id]
         );
 
         await client.query('COMMIT');
@@ -239,11 +238,12 @@ router.post('/:id/renovar', async (req, res) => {
 });
 
 // Create contract (auto-generates installments)
-router.post('/', async (req, res) => {
+router.post('/', checkSubscriptionLimit('contratos'), async (req, res) => {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
 
+        const { realm_id } = req.user;
         const {
             inquilino_id, unidade_id, data_inicio, data_fim, qtd_ocupantes,
             valor_inicial, dia_vencimento, observacoes_contrato,
@@ -254,16 +254,23 @@ router.post('/', async (req, res) => {
             return res.status(400).json({ error: 'Inquilino, unidade, datas, valor e dia de vencimento são obrigatórios.' });
         }
 
+        // Verify that inquilino and unidade belong to the same realm
+        const inquilinoCheck = await client.query('SELECT id FROM inquilinos WHERE id = $1 AND realm_id = $2', [inquilino_id, realm_id]);
+        if (inquilinoCheck.rows.length === 0) throw new Error('Inquilino não encontrado ou acesso negado.');
+
+        const unidadeCheck = await client.query('SELECT id FROM unidades WHERE id = $1 AND realm_id = $2', [unidade_id, realm_id]);
+        if (unidadeCheck.rows.length === 0) throw new Error('Unidade não encontrada ou acesso negado.');
+
         const contractResult = await client.query(
             `INSERT INTO contratos (
-                inquilino_id, unidade_id, data_inicio, data_fim, qtd_ocupantes, 
+                realm_id, inquilino_id, unidade_id, data_inicio, data_fim, qtd_ocupantes, 
                 valor_inicial, dia_vencimento, observacoes_contrato,
                 valor_iptu, valor_agua, valor_luz, valor_outros, desconto_pontualidade
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
             RETURNING *`,
             [
-                inquilino_id, unidade_id, data_inicio, data_fim, qtd_ocupantes || 1,
+                realm_id, inquilino_id, unidade_id, data_inicio, data_fim, qtd_ocupantes || 1,
                 valor_inicial, dia_vencimento, observacoes_contrato,
                 valor_iptu || 0, valor_agua || 0, valor_luz || 0, valor_outros || 0,
                 desconto_pontualidade || 0
@@ -281,14 +288,14 @@ router.post('/', async (req, res) => {
         for (const p of parcelas) {
             await client.query(
                 `INSERT INTO contrato_parcelas (
-                    contrato_id, unidade_id, inquilino_id, numero_parcela, 
+                    realm_id, contrato_id, unidade_id, inquilino_id, numero_parcela, 
                     periodo_inicio, periodo_fim, valor_base, 
                     valor_iptu, valor_agua, valor_luz, valor_outros,
                     desconto_pontualidade, data_vencimento, status_pagamento, descricao
                 )
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
                 [
-                    contrato.id, unidade_id, inquilino_id, p.numero_parcela,
+                    realm_id, contrato.id, unidade_id, inquilino_id, p.numero_parcela,
                     p.periodo_inicio, p.periodo_fim, p.valor_base,
                     p.valor_iptu, p.valor_agua, p.valor_luz, p.valor_outros,
                     p.desconto_pontualidade, p.data_vencimento, p.status_pagamento, p.descricao
@@ -335,6 +342,7 @@ router.post('/', async (req, res) => {
 // Update contract
 router.put('/:id', async (req, res) => {
     try {
+        const { realm_id } = req.user;
         const {
             data_inicio, data_fim, qtd_ocupantes, valor_inicial, dia_vencimento, observacoes_contrato,
             valor_iptu, valor_agua, valor_luz, valor_outros, desconto_pontualidade
@@ -354,11 +362,11 @@ router.put('/:id', async (req, res) => {
         valor_outros = COALESCE($10, valor_outros),
         desconto_pontualidade = COALESCE($11, desconto_pontualidade),
         updated_at = NOW()
-       WHERE id = $12 RETURNING *`,
+       WHERE id = $12 AND realm_id = $13 RETURNING *`,
             [
                 data_inicio, data_fim, qtd_ocupantes, valor_inicial, dia_vencimento, observacoes_contrato,
                 valor_iptu, valor_agua, valor_luz, valor_outros, desconto_pontualidade,
-                req.params.id
+                req.params.id, realm_id
             ]
         );
 
@@ -378,10 +386,11 @@ router.patch('/:id/encerrar', async (req, res) => {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
+        const { realm_id } = req.user;
 
         const result = await client.query(
-            `UPDATE contratos SET status_encerrado = true, updated_at = NOW() WHERE id = $1 RETURNING *`,
-            [req.params.id]
+            `UPDATE contratos SET status_encerrado = true, updated_at = NOW() WHERE id = $1 AND realm_id = $2 RETURNING *`,
+            [req.params.id, realm_id]
         );
 
         if (result.rows.length === 0) {
@@ -389,17 +398,17 @@ router.patch('/:id/encerrar', async (req, res) => {
             return res.status(404).json({ error: 'Contrato não encontrado.' });
         }
 
-        // Update unit status back to available
+        // Update unit status back to available (ensure it's in the same realm)
         await client.query(
-            "UPDATE unidades SET status = 'disponivel', updated_at = NOW() WHERE id = $1",
-            [result.rows[0].unidade_id]
+            "UPDATE unidades SET status = 'disponivel', updated_at = NOW() WHERE id = $1 AND realm_id = $2",
+            [result.rows[0].unidade_id, realm_id]
         );
 
         // Cancel pending installments
         await client.query(
             `UPDATE contrato_parcelas SET status_pagamento = 'cancelado', updated_at = NOW()
-       WHERE contrato_id = $1 AND status_pagamento = 'pendente'`,
-            [req.params.id]
+       WHERE contrato_id = $1 AND status_pagamento = 'pendente' AND realm_id = $2`,
+            [req.params.id, realm_id]
         );
 
         await client.query('COMMIT');
@@ -416,7 +425,8 @@ router.patch('/:id/encerrar', async (req, res) => {
 // Delete contract
 router.delete('/:id', async (req, res) => {
     try {
-        const result = await pool.query('DELETE FROM contratos WHERE id = $1 RETURNING id', [req.params.id]);
+        const { realm_id } = req.user;
+        const result = await pool.query('DELETE FROM contratos WHERE id = $1 AND realm_id = $2 RETURNING id', [req.params.id, realm_id]);
         if (result.rows.length === 0) {
             return res.status(404).json({ error: 'Contrato não encontrado.' });
         }
@@ -430,6 +440,7 @@ router.delete('/:id', async (req, res) => {
 // Create standalone installment (avulso)
 router.post('/parcelas/avulso', async (req, res) => {
     try {
+        const { realm_id } = req.user;
         const {
             unidade_id, inquilino_id, descricao,
             data_vencimento, valor_base,
@@ -441,14 +452,14 @@ router.post('/parcelas/avulso', async (req, res) => {
             return res.status(400).json({ error: 'Unidade e vencimento são obrigatórios.' });
         }
 
-        // Try to find an active contract to link
+        // Try to find an active contract to link (ensure it belongs to the same realm)
         let contrato_id = null;
         if (unidade_id) {
             const activeContract = await pool.query(
                 `SELECT id FROM contratos 
-                 WHERE unidade_id = $1 AND status_encerrado = false 
+                 WHERE unidade_id = $1 AND status_encerrado = false AND realm_id = $2
                  ORDER BY created_at DESC LIMIT 1`,
-                [unidade_id]
+                [unidade_id, realm_id]
             );
             if (activeContract.rows.length > 0) {
                 contrato_id = activeContract.rows[0].id;
@@ -457,14 +468,14 @@ router.post('/parcelas/avulso', async (req, res) => {
 
         const result = await pool.query(
             `INSERT INTO contrato_parcelas (
-                contrato_id, unidade_id, inquilino_id, descricao, data_vencimento,
+                realm_id, contrato_id, unidade_id, inquilino_id, descricao, data_vencimento,
                 valor_base, valor_iptu, valor_agua, valor_luz, valor_outros,
                 observacoes, status_pagamento
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'pendente')
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'pendente')
             RETURNING *`,
             [
-                contrato_id, unidade_id, inquilino_id, descricao, data_vencimento,
+                realm_id, contrato_id, unidade_id, inquilino_id, descricao, data_vencimento,
                 valor_base || 0, valor_iptu || 0, valor_agua || 0, valor_luz || 0, valor_outros || 0,
                 observacoes
             ]
@@ -483,6 +494,7 @@ router.post('/parcelas/avulso', async (req, res) => {
 router.get('/parcelas/filtro', async (req, res) => {
     try {
         const { dt_inicio, dt_fim, status, imovel_id, inquilino_id } = req.query;
+        const { realm_id } = req.user;
 
         let query = `
             SELECT cp.*, 
@@ -495,12 +507,11 @@ router.get('/parcelas/filtro', async (req, res) => {
             LEFT JOIN inquilinos i ON cp.inquilino_id = i.id
             LEFT JOIN unidades u ON cp.unidade_id = u.id
             LEFT JOIN propriedades p ON u.propriedade_id = p.id
-            WHERE 1=1
+            WHERE cp.realm_id = $1
         `;
 
-        const params = [];
-        let paramIndex = 1;
-
+        const params = [realm_id];
+        let paramIndex = 2;
 
         if (dt_inicio && isValidDate(dt_inicio)) {
             query += ` AND cp.data_vencimento >= $${paramIndex++}`;
@@ -522,7 +533,7 @@ router.get('/parcelas/filtro', async (req, res) => {
             }
         }
         if (imovel_id && isValidUUID(imovel_id)) {
-            query += ` AND p.id = $${paramIndex++}`;
+            query += ` AND p.id = $${paramIndex++} AND p.realm_id = $1`;
             params.push(imovel_id);
         }
         if (inquilino_id && isValidUUID(inquilino_id)) {
@@ -575,9 +586,10 @@ router.get('/parcelas/:id', async (req, res) => {
 // Get installments for a contract
 router.get('/:id/parcelas', async (req, res) => {
     try {
+        const { realm_id } = req.user;
         const result = await pool.query(
-            'SELECT * FROM contrato_parcelas WHERE contrato_id = $1 ORDER BY numero_parcela',
-            [req.params.id]
+            'SELECT * FROM contrato_parcelas WHERE contrato_id = $1 AND realm_id = $2 ORDER BY numero_parcela',
+            [req.params.id, realm_id]
         );
         res.json(result.rows);
     } catch (err) {
@@ -594,6 +606,7 @@ router.patch('/parcelas/:parcelaId', async (req, res) => {
             desconto_pontualidade, data_pagamento, valor_pago, status_pagamento, observacoes
         } = req.body;
 
+        const { realm_id } = req.user;
         const result = await pool.query(
             `UPDATE contrato_parcelas SET
         valor_base = COALESCE($1, valor_base),
@@ -607,11 +620,11 @@ router.patch('/parcelas/:parcelaId', async (req, res) => {
         status_pagamento = COALESCE($9, status_pagamento),
         observacoes = COALESCE($10, observacoes),
         updated_at = NOW()
-       WHERE id = $11 RETURNING *`,
+       WHERE id = $11 AND realm_id = $12 RETURNING *`,
             [
                 valor_base, valor_iptu, valor_agua, valor_luz, valor_outros,
                 desconto_pontualidade, data_pagamento, valor_pago, status_pagamento, observacoes,
-                req.params.parcelaId
+                req.params.parcelaId, realm_id
             ]
         );
 
@@ -629,7 +642,8 @@ router.patch('/parcelas/:parcelaId', async (req, res) => {
 // Delete installment (manually generated or otherwise)
 router.delete('/parcelas/:id', async (req, res) => {
     try {
-        const result = await pool.query('DELETE FROM contrato_parcelas WHERE id = $1 RETURNING id', [req.params.id]);
+        const { realm_id } = req.user;
+        const result = await pool.query('DELETE FROM contrato_parcelas WHERE id = $1 AND realm_id = $2 RETURNING id', [req.params.id, realm_id]);
         if (result.rows.length === 0) {
             return res.status(404).json({ error: 'Parcela não encontrada.' });
         }
@@ -671,8 +685,8 @@ router.post('/parcelas/bulk-update', async (req, res) => {
                     WHEN $1 = 'pago' THEN COALESCE(data_pagamento, CURRENT_DATE)
                     ELSE data_pagamento 
                  END
-             WHERE id = ANY($2::uuid[])`,
-            [status, ids]
+             WHERE id = ANY($2::uuid[]) AND realm_id = $3`,
+            [status, ids, req.user.realm_id]
         );
 
         await client.query('COMMIT');
@@ -691,11 +705,12 @@ router.post('/:id/parcelas/gerar', async (req, res) => {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
+        const { realm_id } = req.user;
         const contratoId = req.params.id;
         const { mode = 'next', data_vencimento, valor, count } = req.body; // mode: 'next', 'manual', 'all'
 
         // 1. Fetch contract
-        const contractRes = await client.query('SELECT * FROM contratos WHERE id = $1', [contratoId]);
+        const contractRes = await client.query('SELECT * FROM contratos WHERE id = $1 AND realm_id = $2', [contratoId, realm_id]);
         if (contractRes.rows.length === 0) {
             await client.query('ROLLBACK');
             return res.status(404).json({ error: 'Contrato não encontrado.' });
@@ -714,15 +729,15 @@ router.post('/:id/parcelas/gerar', async (req, res) => {
             const descricao = `Aluguel ${pInicio.toLocaleDateString('pt-BR', { month: '2-digit', year: 'numeric' })}`;
             const res = await client.query(
                 `INSERT INTO contrato_parcelas (
-                    contrato_id, unidade_id, inquilino_id, numero_parcela, 
+                    realm_id, contrato_id, unidade_id, inquilino_id, numero_parcela, 
                     periodo_inicio, periodo_fim, valor_base, 
                     valor_iptu, valor_agua, valor_luz, valor_outros,
                     desconto_pontualidade, data_vencimento, status_pagamento, descricao
                 )
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'pendente', $14)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'pendente', $15)
                 RETURNING *`,
                 [
-                    contrato.id, contrato.unidade_id, contrato.inquilino_id, numero,
+                    realm_id, contrato.id, contrato.unidade_id, contrato.inquilino_id, numero,
                     pInicio, pFim, valorBase,
                     contrato.valor_iptu, contrato.valor_agua, contrato.valor_luz, contrato.valor_outros,
                     0, dtVenc, descricao
@@ -733,8 +748,8 @@ router.post('/:id/parcelas/gerar', async (req, res) => {
 
         // 2. Find last installment
         const lastParcelaRes = await client.query(
-            'SELECT * FROM contrato_parcelas WHERE contrato_id = $1 ORDER BY numero_parcela DESC LIMIT 1',
-            [contratoId]
+            'SELECT * FROM contrato_parcelas WHERE contrato_id = $1 AND realm_id = $2 ORDER BY numero_parcela DESC LIMIT 1',
+            [contratoId, realm_id]
         );
 
         let nextNum = 1;
@@ -817,6 +832,7 @@ router.get('/parcelas/:id/boleto', async (req, res) => {
             return res.status(400).json({ error: 'ID da parcela inválido.' });
         }
 
+        const { realm_id } = req.user;
         // Fetch installment details with joined data
         const result = await pool.query(`
             SELECT cp.*, 
@@ -829,8 +845,8 @@ router.get('/parcelas/:id/boleto', async (req, res) => {
             LEFT JOIN inquilinos i ON cp.inquilino_id = i.id OR c.inquilino_id = i.id
             LEFT JOIN unidades u ON cp.unidade_id = u.id OR c.unidade_id = u.id
             LEFT JOIN propriedades p ON u.propriedade_id = p.id
-            WHERE cp.id = $1
-        `, [req.params.id]);
+            WHERE cp.id = $1 AND cp.realm_id = $2
+        `, [req.params.id, realm_id]);
 
         if (result.rows.length === 0) {
             return res.status(404).json({ error: 'Parcela não encontrada.' });
@@ -899,6 +915,7 @@ router.get('/parcelas/bulk/boletos', async (req, res) => {
 
         if (idList.length === 0) return res.status(400).send('IDs inválidos.');
 
+        const { realm_id } = req.user;
         // Fetch details for all selected installments
         const result = await pool.query(`
             SELECT cp.*, 
@@ -911,8 +928,8 @@ router.get('/parcelas/bulk/boletos', async (req, res) => {
             LEFT JOIN inquilinos i ON cp.inquilino_id = i.id OR c.inquilino_id = i.id
             LEFT JOIN unidades u ON cp.unidade_id = u.id OR c.unidade_id = u.id
             LEFT JOIN propriedades p ON u.propriedade_id = p.id
-            WHERE cp.id = ANY($1::uuid[])
-        `, [idList]);
+            WHERE cp.id = ANY($1::uuid[]) AND cp.realm_id = $2
+        `, [idList, realm_id]);
 
         if (result.rows.length === 0) {
             return res.status(404).send('Nenhuma parcela encontrada.');
@@ -1010,6 +1027,7 @@ router.get('/parcelas/bulk/pdf', async (req, res) => {
         const idList = ids.split(',').filter(id => id && isValidUUID(id));
         if (idList.length === 0) return res.status(400).send('IDs inválidos.');
 
+        const { realm_id } = req.user;
         const result = await pool.query(`
             SELECT cp.*, 
                 c.id as contrato_id,
@@ -1021,9 +1039,9 @@ router.get('/parcelas/bulk/pdf', async (req, res) => {
             LEFT JOIN inquilinos i ON cp.inquilino_id = i.id OR c.inquilino_id = i.id
             LEFT JOIN unidades u ON cp.unidade_id = u.id OR c.unidade_id = u.id
             LEFT JOIN propriedades p ON u.propriedade_id = p.id
-            WHERE cp.id = ANY($1::uuid[])
+            WHERE cp.id = ANY($1::uuid[]) AND cp.realm_id = $2
             ORDER BY cp.data_vencimento ASC
-        `, [idList]);
+        `, [idList, realm_id]);
 
         if (result.rows.length === 0) return res.status(404).send('Nenhuma parcela encontrada.');
 

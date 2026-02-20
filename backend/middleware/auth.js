@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
+const pool = require('../db/pool');
 
-function verifyToken(req, res, next) {
+async function verifyToken(req, res, next) {
     const authHeader = req.headers['authorization'];
     let token = authHeader && authHeader.split(' ')[1];
 
@@ -16,6 +17,30 @@ function verifyToken(req, res, next) {
     try {
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
         req.user = decoded;
+
+        // Check subscription status for non-auth routes
+        const isAuthRoute = req.path.startsWith('/auth');
+        if (!isAuthRoute && !decoded.is_system_admin) {
+            const realmResult = await pool.query(
+                'SELECT status_assinatura FROM realms WHERE id = $1',
+                [decoded.realm_id]
+            );
+
+            if (realmResult.rows.length > 0) {
+                const status = realmResult.rows[0].status_assinatura;
+
+                // Block access for cancelled, expired, or past due subscriptions (except for specific routes)
+                const isBlockedRoute = !req.path.includes('/assinaturas/') &&
+                    !req.path.includes('/health');
+
+                if (isBlockedRoute && ['cancelled', 'expired', 'past_due'].includes(status)) {
+                    return res.status(403).json({
+                        error: 'Assinatura expirada ou cancelada. Atualize sua assinatura para continuar acessando o sistema.'
+                    });
+                }
+            }
+        }
+
         next();
     } catch (err) {
         if (err.name === 'TokenExpiredError') {
@@ -53,18 +78,34 @@ function checkRole(allowedRoles) {
 }
 
 /**
- * Middleware para verificar se o usuário é admin
+ * Middleware para verificar se o usuário é master do realm
  */
-function isAdmin(req, res, next) {
+function isMaster(req, res, next) {
     if (!req.user) {
         return res.status(401).json({ error: 'Usuário não autenticado.' });
     }
 
-    if (req.user.role !== 'admin') {
-        return res.status(403).json({ error: 'Acesso negado. Apenas administradores.' });
+    if (!req.user.is_master) {
+        return res.status(403).json({ error: 'Acesso negado. Apenas usuários master podem realizar esta ação.' });
+    }
+
+    next();
+}
+/**
+ * Middleware para verificar se o usuário é administrador do sistema (global)
+ */
+function isSystemAdmin(req, res, next) {
+    if (!req.user) {
+        return res.status(401).json({ error: 'Usuário não autenticado.' });
+    }
+
+    if (!req.user.is_system_admin) {
+        return res.status(403).json({ error: 'Acesso negado. Apenas administradores do sistema podem acessar esta área.' });
     }
 
     next();
 }
 
-module.exports = { verifyToken, checkRole, isAdmin };
+const isAdmin = checkRole(['admin']);
+
+module.exports = { verifyToken, checkRole, isAdmin, isMaster, isSystemAdmin };
