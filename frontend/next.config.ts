@@ -5,6 +5,7 @@ console.log(`[NEXT_CONFIG] BACKEND_URL: ${process.env.BACKEND_URL}`);
 const nextConfig: NextConfig = {
   /* config options here */
   reactCompiler: true,
+  transpilePackages: ['lucide-react', 'chart.js'], // Ensure modern packages are transpiled
   output: 'standalone',
   typescript: {
     ignoreBuildErrors: true,

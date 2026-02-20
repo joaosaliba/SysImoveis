@@ -29,10 +29,10 @@
     "typescript": "^5"
   },
   "browserslist": [
-    ">0.3%",
+    ">0.2%",
+    "last 4 versions",
     "not dead",
     "not op_mini all",
-    "chrome >= 109",
-    "firefox >= 115"
+    "ie 11"
   ]
 }
