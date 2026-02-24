@@ -8,6 +8,11 @@ RUN npm install --omit=dev
 
 COPY . .
 
+RUN mkdir -p /app/uploads/documentos
+
+# Garante permissão de execução no entrypoint
+RUN chmod +x /app/docker-entrypoint.sh
+
 EXPOSE 3001
 
-CMD ["npm", "start"]
+ENTRYPOINT ["/bin/sh", "/app/docker-entrypoint.sh"]

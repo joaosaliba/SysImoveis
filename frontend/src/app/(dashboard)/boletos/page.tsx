@@ -26,7 +26,8 @@ interface Parcela {
     valor_iptu: string;
     valor_agua: string;
     valor_luz: string;
-    valor_outros: string;
+    valor_outros: string | number;
+    desconto_pontualidade: string | number;
     status_pagamento: string;
     numero_parcela: number;
     descricao?: string;
@@ -200,7 +201,10 @@ function BoletosContent() {
         return `${day}/${m}/${y}`;
     };
 
-    const getStatusBadge = (status: string) => {
+    const getStatusBadge = (p: Parcela) => {
+        const isAtrasado = p.status_pagamento === 'pendente' && p.data_vencimento && new Date(p.data_vencimento.split('T')[0]) < new Date(new Date().setHours(0, 0, 0, 0));
+        const status = isAtrasado ? 'atrasado' : p.status_pagamento;
+
         switch (status) {
             case 'pago': return <span className="flex items-center gap-1 text-green-600 bg-green-50 px-2 py-0.5 rounded-full text-xs font-semibold"><CheckCircle className="w-3 h-3" /> Pago</span>;
             case 'atrasado': return <span className="flex items-center gap-1 text-red-600 bg-red-50 px-2 py-0.5 rounded-full text-xs font-semibold"><AlertTriangle className="w-3 h-3" /> Atrasado</span>;
@@ -210,7 +214,7 @@ function BoletosContent() {
     };
 
     const getTotal = (p: Parcela) => {
-        return (Number(p.valor_base) || 0) + (Number(p.valor_iptu) || 0) + (Number(p.valor_agua) || 0) + (Number(p.valor_luz) || 0) + (Number(p.valor_outros) || 0);
+        return (Number(p.valor_base) || 0) + (Number(p.valor_iptu) || 0) + (Number(p.valor_agua) || 0) + (Number(p.valor_luz) || 0) + (Number(p.valor_outros) || 0) - (Number(p.desconto_pontualidade) || 0);
     };
 
     const totalPages = Math.ceil(parcelas.length / itemsPerPage);
@@ -220,28 +224,28 @@ function BoletosContent() {
     return (
         <div className="space-y-6 pt-10 md:pt-0">
             <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-                <div>
-                    <h1 className="text-2xl md:text-3xl font-bold text-[var(--color-text)] flex items-center gap-2">
+                <div className="text-center md:text-left">
+                    <h1 className="text-2xl md:text-3xl font-bold text-[var(--color-text)] flex items-center justify-center md:justify-start gap-2">
                         <FileText className="w-8 h-8 text-[var(--color-primary)]" /> Central de Boletos
                     </h1>
                     <p className="text-[var(--color-text-muted)] mt-1">Gere e imprima boletos em massa</p>
                 </div>
-                <div className="flex gap-2">
-                    <button onClick={openNewParcela} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-purple-600 text-white font-semibold hover:bg-purple-700 transition-all shadow-lg shadow-purple-500/25">
-                        <DollarSign className="w-5 h-5" /> Nova Cobrança
+                <div className="flex flex-wrap items-center justify-center md:justify-end gap-2 w-full md:w-auto">
+                    <button onClick={openNewParcela} className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-purple-600 text-white font-semibold hover:bg-purple-700 transition-all shadow-lg shadow-purple-500/25 min-w-[140px]">
+                        <DollarSign className="w-5 h-5" /> <span className="inline">Nova Cobrança</span>
                     </button>
-                    <button onClick={loadParcelas} disabled={loading} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gray-100 text-[var(--color-text)] font-semibold hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm">
-                        <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /> Atualizar
+                    <button onClick={loadParcelas} disabled={loading} className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-gray-100 text-[var(--color-text)] font-semibold hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm">
+                        <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /> <span className="inline">Atualizar</span>
                     </button>
                     <button onClick={handleBulkActionClick} disabled={selectedIds.size === 0}
-                        className="flex items-center gap-2 px-6 py-3 rounded-xl bg-[var(--color-primary)] text-white font-semibold hover:bg-[var(--color-primary-hover)] disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-blue-500/25">
+                        className="flex-1 md:flex-none flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-[var(--color-primary)] text-white font-semibold hover:bg-[var(--color-primary-hover)] disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-blue-500/25 min-w-[140px]">
                         <CheckSquare className="w-5 h-5" /> Ações ({selectedIds.size})
                     </button>
                 </div>
             </div>
 
             {/* Filters Bar */}
-            <div className="bg-white p-4 rounded-2xl shadow-sm border border-[var(--color-border)] grid grid-cols-1 md:grid-cols-5 gap-4">
+            <div className="bg-white p-4 rounded-2xl shadow-sm border border-[var(--color-border)] grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 2xl:grid-cols-5 gap-4">
                 <div className="space-y-1">
                     <label className="text-xs font-medium text-[var(--color-text-muted)]">Data Início</label>
                     <div className="relative">
@@ -291,7 +295,7 @@ function BoletosContent() {
             {/* List */}
             <div className="bg-white rounded-2xl shadow-sm border border-[var(--color-border)] overflow-hidden">
                 <div className="overflow-x-auto">
-                    <table className="w-full text-left">
+                    <table className="w-full text-left min-w-[1000px]">
                         <thead className="bg-gray-50/80">
                             <tr>
                                 <th className="px-4 py-3 w-10">
@@ -333,7 +337,7 @@ function BoletosContent() {
                                     </td>
                                     <td className="px-4 py-3 text-sm text-gray-600">{p.descricao || `Parcela ${p.numero_parcela}`}</td>
                                     <td className="px-4 py-3 text-sm font-semibold">{formatCurrency(getTotal(p))}</td>
-                                    <td className="px-4 py-3">{getStatusBadge(p.status_pagamento)}</td>
+                                    <td className="px-4 py-3">{getStatusBadge(p)}</td>
                                     <td className="px-4 py-3 text-right">
                                         <div className="flex items-center justify-end gap-1">
                                             <button
@@ -354,15 +358,6 @@ function BoletosContent() {
                                                 </button>
                                             )}
 
-                                            <a
-                                                href={`/api/relatorios/boleto/${p.id}`}
-                                                target="_blank"
-                                                className="p-1.5 rounded-lg hover:bg-green-100 text-green-600 transition-colors"
-                                                onClick={(e) => e.stopPropagation()}
-                                                title="Baixar PDF"
-                                            >
-                                                <Download className="w-4 h-4" />
-                                            </a>
                                             <a
                                                 href={`/contratos/print/boletos?ids=${p.id}`}
                                                 target="_blank"

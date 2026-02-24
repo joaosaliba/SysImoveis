@@ -2,14 +2,15 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const pool = require('../db/pool');
-const { verifyToken, checkRole, isAdmin } = require('../middleware/auth');
+const { getPaginationParams, formatPaginatedResponse } = require('../db/pagination');
+const { verifyToken, checkAdmin } = require('../middleware/auth');
 
 const router = express.Router();
 
-// Register (only admin can create users with specific roles)
-router.post('/register', async (req, res) => {
+// Register (only admin can create users)
+router.post('/register', verifyToken, checkAdmin, async (req, res) => {
     try {
-        const { nome, email, senha, role } = req.body;
+        const { nome, email, senha, is_admin, perfil_id } = req.body;
 
         if (!nome || !email || !senha) {
             return res.status(400).json({ error: 'Nome, email e senha são obrigatórios.' });
@@ -21,13 +22,10 @@ router.post('/register', async (req, res) => {
         }
 
         const senha_hash = await bcrypt.hash(senha, 12);
-        
-        // Default role is 'gestor', only admin can set other roles
-        const userRole = role === 'admin' || role === 'inquilino' ? role : 'gestor';
-        
+
         const result = await pool.query(
-            'INSERT INTO usuarios (nome, email, senha_hash, role) VALUES ($1, $2, $3, $4) RETURNING id, nome, email, role, created_at',
-            [nome, email, senha_hash, userRole]
+            'INSERT INTO usuarios (nome, email, senha_hash, is_admin, perfil_id) VALUES ($1, $2, $3, $4, $5) RETURNING id, nome, email, is_admin, perfil_id, created_at',
+            [nome, email, senha_hash, is_admin === true, perfil_id || null]
         );
 
         res.status(201).json({ user: result.rows[0] });
@@ -46,7 +44,10 @@ router.post('/login', async (req, res) => {
             return res.status(400).json({ error: 'Email e senha são obrigatórios.' });
         }
 
-        const result = await pool.query('SELECT * FROM usuarios WHERE email = $1', [email]);
+        const result = await pool.query(
+            `SELECT u.*, p.nome AS perfil_nome FROM usuarios u LEFT JOIN perfis p ON u.perfil_id = p.id WHERE u.email = $1`,
+            [email]
+        );
         if (result.rows.length === 0) {
             return res.status(401).json({ error: 'Credenciais inválidas.' });
         }
@@ -58,7 +59,7 @@ router.post('/login', async (req, res) => {
         }
 
         const accessToken = jwt.sign(
-            { id: user.id, email: user.email, nome: user.nome, role: user.role || 'gestor' },
+            { id: user.id, email: user.email, nome: user.nome, is_admin: user.is_admin || false, perfil_id: user.perfil_id || null },
             process.env.JWT_SECRET,
             { expiresIn: process.env.JWT_EXPIRES_IN || '15m' }
         );
@@ -74,7 +75,12 @@ router.post('/login', async (req, res) => {
         res.json({
             accessToken,
             refreshToken,
-            user: { id: user.id, nome: user.nome, email: user.email, role: user.role || 'gestor' }
+            user: {
+                id: user.id, nome: user.nome, email: user.email,
+                is_admin: user.is_admin || false,
+                perfil_id: user.perfil_id || null,
+                perfil_nome: user.perfil_nome || null,
+            }
         });
     } catch (err) {
         console.error('Login error:', err);
@@ -92,7 +98,10 @@ router.post('/refresh', async (req, res) => {
         }
 
         const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
-        const result = await pool.query('SELECT * FROM usuarios WHERE id = $1 AND refresh_token = $2', [decoded.id, refreshToken]);
+        const result = await pool.query(
+            `SELECT u.*, p.nome AS perfil_nome FROM usuarios u LEFT JOIN perfis p ON u.perfil_id = p.id WHERE u.id = $1 AND u.refresh_token = $2`,
+            [decoded.id, refreshToken]
+        );
 
         if (result.rows.length === 0) {
             return res.status(403).json({ error: 'Refresh token inválido.' });
@@ -101,7 +110,7 @@ router.post('/refresh', async (req, res) => {
         const user = result.rows[0];
 
         const newAccessToken = jwt.sign(
-            { id: user.id, email: user.email, nome: user.nome, role: user.role || 'gestor' },
+            { id: user.id, email: user.email, nome: user.nome, is_admin: user.is_admin || false, perfil_id: user.perfil_id || null },
             process.env.JWT_SECRET,
             { expiresIn: process.env.JWT_EXPIRES_IN || '15m' }
         );
@@ -114,10 +123,15 @@ router.post('/refresh', async (req, res) => {
 
         await pool.query('UPDATE usuarios SET refresh_token = $1 WHERE id = $2', [newRefreshToken, user.id]);
 
-        res.json({ 
-            accessToken: newAccessToken, 
+        res.json({
+            accessToken: newAccessToken,
             refreshToken: newRefreshToken,
-            user: { id: user.id, nome: user.nome, email: user.email, role: user.role || 'gestor' }
+            user: {
+                id: user.id, nome: user.nome, email: user.email,
+                is_admin: user.is_admin || false,
+                perfil_id: user.perfil_id || null,
+                perfil_nome: user.perfil_nome || null,
+            }
         });
     } catch (err) {
         console.error('Refresh error:', err);
@@ -125,32 +139,61 @@ router.post('/refresh', async (req, res) => {
     }
 });
 
-// Get all users (Admin only)
-router.get('/users', verifyToken, checkRole(['admin']), async (req, res) => {
+// Get all users (Admin only) – paginated + searchable
+router.get('/users', verifyToken, checkAdmin, async (req, res) => {
     try {
+        const { offset, limit, page } = getPaginationParams(req.query.page, req.query.limit);
+        const search = req.query.search || '';
+
+        const conditions = [];
+        const params = [];
+
+        if (search) {
+            params.push(`%${search}%`);
+            conditions.push(`(u.nome ILIKE $${params.length} OR u.email ILIKE $${params.length})`);
+        }
+
+        const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+        const countResult = await pool.query(`SELECT COUNT(*) FROM usuarios u ${where}`, params);
+        const total = parseInt(countResult.rows[0].count);
+
+        const dataParams = [...params, limit, offset];
         const result = await pool.query(
-            'SELECT id, nome, email, role, created_at, updated_at FROM usuarios ORDER BY created_at DESC'
+            `SELECT u.id, u.nome, u.email, u.is_admin, u.perfil_id, u.created_at, u.updated_at, p.nome AS perfil_nome
+             FROM usuarios u LEFT JOIN perfis p ON u.perfil_id = p.id
+             ${where} ORDER BY u.created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+            dataParams
         );
-        res.json(result.rows);
+
+        res.json(formatPaginatedResponse(result.rows, total, page, limit));
     } catch (err) {
         console.error('List users error:', err);
         res.status(500).json({ error: 'Erro ao listar usuários.' });
     }
 });
 
-// Update user role (Admin only)
-router.put('/users/:id/role', verifyToken, checkRole(['admin']), async (req, res) => {
+// Update user (Admin only) – is_admin + perfil_id
+router.put('/users/:id', verifyToken, checkAdmin, async (req, res) => {
     try {
-        const { role } = req.body;
+        const { is_admin, perfil_id } = req.body;
         const userId = req.params.id;
 
-        if (!role || !['admin', 'gestor', 'inquilino'].includes(role)) {
-            return res.status(400).json({ error: 'Role inválido.' });
-        }
+        const setClauses = ['updated_at = NOW()'];
+        const params = [];
 
+        // is_admin toggle
+        params.push(is_admin === true);
+        setClauses.push(`is_admin = $${params.length}`);
+
+        // perfil_id can be null (to remove profile) or a valid UUID
+        params.push(perfil_id || null);
+        setClauses.push(`perfil_id = $${params.length}`);
+
+        params.push(userId);
         const result = await pool.query(
-            'UPDATE usuarios SET role = $1, updated_at = NOW() WHERE id = $2 RETURNING id, nome, email, role',
-            [role, userId]
+            `UPDATE usuarios SET ${setClauses.join(', ')} WHERE id = $${params.length} RETURNING id, nome, email, is_admin, perfil_id`,
+            params
         );
 
         if (result.rows.length === 0) {
@@ -159,13 +202,13 @@ router.put('/users/:id/role', verifyToken, checkRole(['admin']), async (req, res
 
         res.json(result.rows[0]);
     } catch (err) {
-        console.error('Update role error:', err);
-        res.status(500).json({ error: 'Erro ao atualizar role do usuário.' });
+        console.error('Update user error:', err);
+        res.status(500).json({ error: 'Erro ao atualizar usuário.' });
     }
 });
 
 // Delete user (Admin only)
-router.delete('/users/:id', verifyToken, checkRole(['admin']), async (req, res) => {
+router.delete('/users/:id', verifyToken, checkAdmin, async (req, res) => {
     try {
         const userId = req.params.id;
 

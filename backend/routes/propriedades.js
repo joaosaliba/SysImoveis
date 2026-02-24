@@ -1,13 +1,13 @@
 const express = require('express');
 const pool = require('../db/pool');
-const { verifyToken } = require('../middleware/auth');
+const { verifyToken, checkPermission } = require('../middleware/auth');
 const { getPaginationParams, formatPaginatedResponse } = require('../db/pagination');
 
 const router = express.Router();
 router.use(verifyToken);
 
 // List all properties (with optional search and pagination)
-router.get('/', async (req, res) => {
+router.get('/', checkPermission('imoveis', 'ver'), async (req, res) => {
     try {
         const { search, page, limit } = req.query;
         const { offset, limit: limitNum, page: pageNum } = getPaginationParams(page, limit);
@@ -69,7 +69,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // Create property
-router.post('/', async (req, res) => {
+router.post('/', checkPermission('imoveis', 'salvar'), async (req, res) => {
     try {
         const { nome, endereco, numero, complemento, bairro, cidade, uf, cep, administrador, observacoes } = req.body;
 
@@ -92,7 +92,7 @@ router.post('/', async (req, res) => {
 });
 
 // Update property
-router.put('/:id', async (req, res) => {
+router.put('/:id', checkPermission('imoveis', 'salvar'), async (req, res) => {
     try {
         const { nome, endereco, numero, complemento, bairro, cidade, uf, cep, administrador, observacoes } = req.body;
 
@@ -125,7 +125,7 @@ router.put('/:id', async (req, res) => {
 });
 
 // Delete property
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', checkPermission('imoveis', 'deletar'), async (req, res) => {
     try {
         const result = await pool.query('DELETE FROM propriedades WHERE id = $1 RETURNING id', [req.params.id]);
         if (result.rows.length === 0) {
@@ -169,7 +169,7 @@ router.get('/unidades/all', async (req, res) => {
 });
 
 // Create unit
-router.post('/:id/unidades', async (req, res) => {
+router.post('/:id/unidades', checkPermission('imoveis', 'salvar'), async (req, res) => {
     try {
         const { identificador, tipo_unidade, area_m2, valor_sugerido, observacoes } = req.body;
 
@@ -192,7 +192,7 @@ router.post('/:id/unidades', async (req, res) => {
 });
 
 // Update unit
-router.put('/unidades/:unidadeId', async (req, res) => {
+router.put('/unidades/:unidadeId', checkPermission('imoveis', 'salvar'), async (req, res) => {
     try {
         const { identificador, tipo_unidade, area_m2, valor_sugerido, observacoes, status } = req.body;
 
@@ -221,7 +221,7 @@ router.put('/unidades/:unidadeId', async (req, res) => {
 });
 
 // Delete unit
-router.delete('/unidades/:unidadeId', async (req, res) => {
+router.delete('/unidades/:unidadeId', checkPermission('imoveis', 'deletar'), async (req, res) => {
     try {
         const result = await pool.query('DELETE FROM unidades WHERE id = $1 RETURNING id', [req.params.unidadeId]);
         if (result.rows.length === 0) {

@@ -280,35 +280,37 @@ export default function ImoveisPage() {
                 ) : propriedades.map(p => (
                     <div key={p.id} className="bg-white rounded-2xl shadow-sm border border-[var(--color-border)] overflow-hidden">
                         {/* Property Row */}
-                        <div className="flex items-center gap-4 px-6 py-4 hover:bg-gray-50/50 transition-colors">
-                            <button onClick={() => toggleExpand(p.id)} className="p-1 rounded-lg hover:bg-gray-100">
-                                {expandedProp === p.id ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}
-                            </button>
-                            <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2">
-                                    <span className="text-sm font-semibold text-[var(--color-text)]">
-                                        {p.nome || `${p.endereco}${p.numero ? `, ${p.numero}` : ''}`}
-                                    </span>
+                        <div className="flex flex-col md:flex-row md:items-center gap-4 px-6 py-4 hover:bg-gray-50/50 transition-colors">
+                            <div className="flex items-center gap-4 flex-1 min-w-0">
+                                <button onClick={() => toggleExpand(p.id)} className="p-1 rounded-lg hover:bg-gray-100 flex-shrink-0">
+                                    {expandedProp === p.id ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}
+                                </button>
+                                <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-sm font-semibold text-[var(--color-text)] truncate">
+                                            {p.nome || `${p.endereco}${p.numero ? `, ${p.numero}` : ''}`}
+                                        </span>
+                                    </div>
+                                    <p className="text-xs text-[var(--color-text-muted)] mt-0.5 truncate">
+                                        {p.nome ? `${p.endereco}${p.numero ? `, ${p.numero}` : ''} — ` : ''}{p.cidade}/{p.uf}
+                                        {p.administrador ? ` • ${p.administrador}` : ''}
+                                    </p>
                                 </div>
-                                <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
-                                    {p.nome ? `${p.endereco}${p.numero ? `, ${p.numero}` : ''} — ` : ''}{p.cidade}/{p.uf}
-                                    {p.administrador ? ` • ${p.administrador}` : ''}
-                                </p>
                             </div>
-                            <div className="flex items-center gap-2 text-xs">
-                                <span className="px-2.5 py-1 rounded-lg bg-blue-50 text-blue-700 font-medium">
+                            <div className="flex flex-wrap items-center gap-2 text-xs ml-9 md:ml-0">
+                                <span className="px-2.5 py-1 rounded-lg bg-blue-50 text-blue-700 font-medium whitespace-nowrap">
                                     <DoorOpen className="w-3.5 h-3.5 inline -mt-0.5 mr-1" />
                                     {p.total_unidades} un.
                                 </span>
                                 {p.unidades_alugadas > 0 && (
-                                    <span className="px-2.5 py-1 rounded-lg bg-green-50 text-green-700 font-medium">
+                                    <span className="px-2.5 py-1 rounded-lg bg-green-50 text-green-700 font-medium whitespace-nowrap">
                                         {p.unidades_alugadas} alugadas
                                     </span>
                                 )}
                             </div>
-                            <div className="flex items-center gap-1">
+                            <div className="flex items-center justify-end gap-1 ml-9 md:ml-0">
                                 <button onClick={() => toggleExpand(p.id)}
-                                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-amber-50 text-amber-700 text-xs font-semibold hover:bg-amber-100 transition-colors">
+                                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-amber-50 text-amber-700 text-xs font-semibold hover:bg-amber-100 transition-colors whitespace-nowrap">
                                     <DoorOpen className="w-3.5 h-3.5" />
                                     Unidades
                                     {expandedProp === p.id ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
@@ -343,7 +345,7 @@ export default function ImoveisPage() {
                                     </p>
                                 ) : (
                                     <div className="overflow-x-auto rounded-xl border border-[var(--color-border)]">
-                                        <table className="w-full text-left text-sm bg-white">
+                                        <table className="w-full text-left text-sm bg-white min-w-[800px]">
                                             <thead className="bg-gray-50/80">
                                                 <tr>
                                                     <th className="px-4 py-3 text-xs font-semibold text-[var(--color-text-muted)] uppercase">Identificador</th>
@@ -474,7 +476,7 @@ export default function ImoveisPage() {
                                     className="px-6 py-3 rounded-xl border border-[var(--color-border)] font-medium hover:bg-gray-50">Cancelar</button>
                                 <button type="submit" disabled={saving}
                                     className="px-6 py-3 rounded-xl bg-[var(--color-primary)] text-white font-semibold
-                                        hover:bg-[var(--color-primary-hover)] disabled:opacity-50 shadow-lg shadow-blue-500/25">
+                                                    hover:bg-[var(--color-primary-hover)] disabled:opacity-50 shadow-lg shadow-blue-500/25">
                                     {saving ? 'Salvando...' : 'Salvar'}
                                 </button>
                             </div>
@@ -525,7 +527,7 @@ export default function ImoveisPage() {
                                     className="px-5 py-2.5 rounded-xl border border-[var(--color-border)] font-medium hover:bg-gray-50 text-sm">Cancelar</button>
                                 <button type="submit" disabled={unitSaving}
                                     className="px-5 py-2.5 rounded-xl bg-[var(--color-primary)] text-white font-semibold text-sm
-                                        hover:bg-[var(--color-primary-hover)] disabled:opacity-50 shadow-lg shadow-blue-500/25">
+                                                    hover:bg-[var(--color-primary-hover)] disabled:opacity-50 shadow-lg shadow-blue-500/25">
                                     {unitSaving ? 'Salvando...' : 'Salvar'}
                                 </button>
                             </div>

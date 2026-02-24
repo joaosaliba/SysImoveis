@@ -34,7 +34,8 @@ export default function ParcelaModal({
         valor_luz: '',
         valor_outros: '',
         observacoes: '',
-        status_pagamento: 'pendente'
+        status_pagamento: 'pendente',
+        desconto_pontualidade: '0'
     });
 
     const [unidades, setUnidades] = useState<any[]>([]);
@@ -60,7 +61,8 @@ export default function ParcelaModal({
                     valor_luz: initialData.valor_luz,
                     valor_outros: initialData.valor_outros,
                     observacoes: initialData.observacoes || '',
-                    status_pagamento: initialData.status_pagamento
+                    status_pagamento: initialData.status_pagamento,
+                    desconto_pontualidade: initialData.desconto_pontualidade || '0'
                 });
                 // If editing, we might need to fetch units for the unit's property... 
                 // but unit selection is tricky in edit mode. 
@@ -81,7 +83,8 @@ export default function ParcelaModal({
                     valor_luz: '',
                     valor_outros: '',
                     observacoes: '',
-                    status_pagamento: 'pendente'
+                    status_pagamento: 'pendente',
+                    desconto_pontualidade: '0'
                 });
                 setSelectedPropId('');
                 setUnidades([]);
@@ -118,6 +121,7 @@ export default function ParcelaModal({
                 valor_agua: parseFloat(form.valor_agua) || 0,
                 valor_luz: parseFloat(form.valor_luz) || 0,
                 valor_outros: parseFloat(form.valor_outros) || 0,
+                desconto_pontualidade: parseFloat(form.desconto_pontualidade) || 0,
             };
 
             if (isEditing) {
@@ -209,7 +213,6 @@ export default function ParcelaModal({
                             <select value={form.status_pagamento} onChange={e => setForm({ ...form, status_pagamento: e.target.value })} className={inputClass}>
                                 <option value="pendente">Pendente</option>
                                 <option value="pago">Pago</option>
-                                <option value="atrasado">Atrasado</option>
                                 <option value="cancelado">Cancelado</option>
                             </select>
                         </div>
@@ -244,6 +247,11 @@ export default function ParcelaModal({
                                 <label className="block text-xs font-medium text-gray-500 mb-1">Outros</label>
                                 <input type="number" step="0.01" value={form.valor_outros}
                                     onChange={e => setForm({ ...form, valor_outros: e.target.value })} placeholder="0,00" className={inputClass} />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-medium text-red-500 mb-1">Desc. Pontualidade</label>
+                                <input type="number" step="0.01" value={form.desconto_pontualidade}
+                                    onChange={e => setForm({ ...form, desconto_pontualidade: e.target.value })} placeholder="0,00" className={`${inputClass} border-red-100 bg-red-50/30`} />
                             </div>
                         </div>
                     </div>

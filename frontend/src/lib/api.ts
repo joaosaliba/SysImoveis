@@ -105,6 +105,21 @@ export const api = {
     put: (endpoint: string, data: unknown) => request(endpoint, { method: 'PUT', body: JSON.stringify(data) }),
     patch: (endpoint: string, data: unknown) => request(endpoint, { method: 'PATCH', body: JSON.stringify(data) }),
     delete: (endpoint: string) => request(endpoint, { method: 'DELETE' }),
+    upload: async (endpoint: string, formData: FormData) => {
+        const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
+        const headers: Record<string, string> = {};
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+        const res = await fetch(`${API_URL}${endpoint}`, { method: 'POST', headers, body: formData });
+        if (!res.ok) {
+            const data = await res.json();
+            throw new Error(data.error || 'Erro no upload');
+        }
+        return res.json();
+    },
+    downloadUrl: (endpoint: string) => {
+        const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : '';
+        return `${API_URL}${endpoint}?token=${token}`;
+    },
 };
 
 export async function login(email: string, senha: string) {
@@ -159,25 +174,8 @@ export function isAuthenticated() {
     return !!localStorage.getItem('accessToken');
 }
 
-export function getUserRole(): string | null {
-    if (typeof window === 'undefined') return null;
-    const user = getUser();
-    return user?.role || null;
-}
-
-export function hasRole(allowedRoles: string | string[]): boolean {
+export function isAdmin(): boolean {
     if (typeof window === 'undefined') return false;
     const user = getUser();
-    if (!user || !user.role) return false;
-    
-    const roles = Array.isArray(allowedRoles) ? allowedRoles : [allowedRoles];
-    return roles.includes(user.role);
-}
-
-export function isAdmin(): boolean {
-    return hasRole('admin');
-}
-
-export function isGestor(): boolean {
-    return hasRole(['admin', 'gestor']);
+    return user?.is_admin === true;
 }

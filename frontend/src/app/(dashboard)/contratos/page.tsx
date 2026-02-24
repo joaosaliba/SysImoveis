@@ -323,7 +323,7 @@ export default function ContratosPage() {
         // Let's rely on showDetail or fetch it specifically if needed.
         // For simplicity, I'll just open the form. If values are empty, they might overwrite with 0 on save if we are not careful.
         // Let's fetch the full contract data to populate the edit form correctly.
-        api.get(`/contratos/${c.id}`).then(fullData => {
+        api.get(`/contratos/${c.id}`).then(async (fullData) => {
             setForm({
                 inquilino_id: fullData.inquilino_id,
                 unidade_id: fullData.unidade_id,
@@ -340,11 +340,18 @@ export default function ContratosPage() {
                 desconto_pontualidade: String(fullData.desconto_pontualidade || 0)
             });
             setEditingContract(fullData);
-            setSelectedPropId(''); // Reset or find property? 
-            // In layout, we select property then unit. Pre-filling this properly is complex as we don't know propID easily without lookup.
-            // But we can just set form and ensure unidades list is loaded if user changes it.
-            // For now, let's just show form. If user wants to change unit, they start over selecting property.
-            // Also ensure we have the lists
+
+            // Pre-fill property and fetch units
+            if (fullData.propriedade_id) {
+                setSelectedPropId(fullData.propriedade_id);
+                try {
+                    const units = await api.get(`/propriedades/${fullData.propriedade_id}/unidades`);
+                    setUnidades(units);
+                } catch (err) {
+                    console.error('Error fetching units for editing contract:', err);
+                }
+            }
+
             fetchLists().then(() => setShowForm(true));
         });
     };
@@ -533,7 +540,7 @@ export default function ContratosPage() {
             {/* Table */}
             <div className="bg-white rounded-2xl shadow-sm border border-[var(--color-border)] overflow-hidden">
                 <div className="overflow-x-auto">
-                    <table className="w-full text-left">
+                    <table className="w-full text-left min-w-[1000px]">
                         <thead className="bg-gray-50/80">
                             <tr>
                                 <th className="px-6 py-4 text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider">Inquilino</th>

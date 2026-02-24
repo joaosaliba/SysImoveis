@@ -1,18 +1,25 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { api, getUserRole, isAdmin } from '@/lib/api';
-import RequireRole, { useRole } from '@/components/RequireRole';
+import { api } from '@/lib/api';
+import { useAuth } from '@/components/RequireRole';
 import { Pagination } from '@/components/ui/Pagination';
-import { Plus, Search, Pencil, Trash2, X, ShieldCheck, User, Users } from 'lucide-react';
+import { Plus, Search, Pencil, Trash2, X, ShieldCheck, Users } from 'lucide-react';
 
 interface Usuario {
     id: string;
     nome: string;
     email: string;
-    role: 'admin' | 'gestor' | 'inquilino';
+    is_admin: boolean;
+    perfil_id: string | null;
+    perfil_nome: string | null;
     created_at: string;
     updated_at: string;
+}
+
+interface PerfilOption {
+    id: string;
+    nome: string;
 }
 
 interface PaginatedResponse {
@@ -27,22 +34,18 @@ interface PaginatedResponse {
     };
 }
 
-const ROLES = [
-    { value: 'admin', label: 'Administrador', color: 'bg-red-100 text-red-700' },
-    { value: 'gestor', label: 'Gestor', color: 'bg-blue-100 text-blue-700' },
-    { value: 'inquilino', label: 'Inquilino', color: 'bg-green-100 text-green-700' },
-];
-
 const emptyForm = {
     nome: '',
     email: '',
     senha: '',
-    role: 'gestor' as 'admin' | 'gestor' | 'inquilino',
+    is_admin: false,
+    perfil_id: '' as string,
 };
 
 export default function UsuariosPage() {
-    const { isAdmin } = useRole();
+    const { isAdmin } = useAuth();
     const [paginationData, setPaginationData] = useState<PaginatedResponse | null>(null);
+    const [perfis, setPerfis] = useState<PerfilOption[]>([]);
     const [search, setSearch] = useState('');
     const [showForm, setShowForm] = useState(false);
     const [editing, setEditing] = useState<Usuario | null>(null);
@@ -53,6 +56,13 @@ export default function UsuariosPage() {
 
     const [currentPage, setCurrentPage] = useState(1);
     const [itemsPerPage, setItemsPerPage] = useState(10);
+
+    // Load profiles for dropdown
+    useEffect(() => {
+        api.get('/perfis?limit=100').then(res => {
+            setPerfis(res.data?.map((p: { id: string; nome: string }) => ({ id: p.id, nome: p.nome })) || []);
+        }).catch(console.error);
+    }, []);
 
     const loadData = useCallback(async () => {
         setLoading(true);
@@ -91,7 +101,8 @@ export default function UsuariosPage() {
             nome: u.nome,
             email: u.email,
             senha: '',
-            role: u.role,
+            is_admin: u.is_admin || false,
+            perfil_id: u.perfil_id || '',
         });
         setEditing(u);
         setShowForm(true);
@@ -104,19 +115,19 @@ export default function UsuariosPage() {
         setError('');
 
         try {
-            const payload = {
-                nome: form.nome,
-                email: form.email,
-                role: form.role,
-                ...(form.senha && { senha: form.senha }),
-            };
-
             if (editing) {
-                // Update user role
-                await api.put(`/auth/users/${editing.id}/role`, { role: form.role });
-                // If password provided, update it (would need separate endpoint)
+                await api.put(`/auth/users/${editing.id}`, {
+                    is_admin: form.is_admin,
+                    perfil_id: form.perfil_id || null,
+                });
             } else {
-                await api.post('/auth/register', payload);
+                await api.post('/auth/register', {
+                    nome: form.nome,
+                    email: form.email,
+                    senha: form.senha,
+                    is_admin: form.is_admin,
+                    perfil_id: form.perfil_id || null,
+                });
             }
 
             setShowForm(false);
@@ -136,17 +147,6 @@ export default function UsuariosPage() {
         } catch (err: unknown) {
             alert(err instanceof Error ? err.message : 'Erro ao remover');
         }
-    };
-
-    const roleBadge = (role: string) => {
-        const roleInfo = ROLES.find(r => r.value === role) || ROLES[1];
-        return (
-            <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold ${roleInfo.color}`}>
-                {role === 'admin' && <ShieldCheck className="w-3 h-3" />}
-                {role === 'gestor' && <User className="w-3 h-3" />}
-                {roleInfo.label}
-            </span>
-        );
     };
 
     const inputClass = "w-full px-4 py-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/30 focus:border-[var(--color-primary)]";
@@ -193,7 +193,7 @@ export default function UsuariosPage() {
                             <tr>
                                 <th className="px-6 py-4 text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider">Nome</th>
                                 <th className="px-6 py-4 text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider">Email</th>
-                                <th className="px-6 py-4 text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider">Role</th>
+                                <th className="px-6 py-4 text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider">Perfil</th>
                                 <th className="px-6 py-4 text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider">Criado em</th>
                                 <th className="px-6 py-4 text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider">Ações</th>
                             </tr>
@@ -211,9 +211,28 @@ export default function UsuariosPage() {
                             ) : (
                                 usuarios.map(u => (
                                     <tr key={u.id} className="hover:bg-gray-50/50 transition-colors">
-                                        <td className="px-6 py-4 text-sm font-medium">{u.nome}</td>
+                                        <td className="px-6 py-4 text-sm font-medium">
+                                            <div className="flex items-center gap-2">
+                                                {u.nome}
+                                                {u.is_admin && (
+                                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700">
+                                                        <ShieldCheck className="w-3 h-3" /> Admin
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </td>
                                         <td className="px-6 py-4 text-sm text-gray-600">{u.email}</td>
-                                        <td className="px-6 py-4">{roleBadge(u.role)}</td>
+                                        <td className="px-6 py-4">
+                                            {u.perfil_nome ? (
+                                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700">
+                                                    <ShieldCheck className="w-3 h-3" /> {u.perfil_nome}
+                                                </span>
+                                            ) : (
+                                                <span className="text-xs text-gray-400">
+                                                    {u.is_admin ? 'Acesso total' : 'Sem perfil'}
+                                                </span>
+                                            )}
+                                        </td>
                                         <td className="px-6 py-4 text-sm text-gray-500">
                                             {new Date(u.created_at).toLocaleDateString('pt-BR')}
                                         </td>
@@ -258,12 +277,14 @@ export default function UsuariosPage() {
                             <div>
                                 <label className="block text-sm font-medium text-[var(--color-text)] mb-1.5">Nome *</label>
                                 <input type="text" value={form.nome} onChange={e => setForm({ ...form, nome: e.target.value })}
-                                    required placeholder="Nome completo" className={inputClass} />
+                                    required={!editing} disabled={!!editing} placeholder="Nome completo"
+                                    className={`${inputClass} ${editing ? 'opacity-60 cursor-not-allowed' : ''}`} />
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-[var(--color-text)] mb-1.5">Email *</label>
                                 <input type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })}
-                                    required placeholder="email@exemplo.com" className={inputClass} />
+                                    required={!editing} disabled={!!editing} placeholder="email@exemplo.com"
+                                    className={`${inputClass} ${editing ? 'opacity-60 cursor-not-allowed' : ''}`} />
                             </div>
                             {!editing && (
                                 <div>
@@ -272,21 +293,37 @@ export default function UsuariosPage() {
                                         required placeholder="Mínimo 6 caracteres" minLength={6} className={inputClass} />
                                 </div>
                             )}
-                            {editing && (
+
+                            {/* Admin Toggle */}
+                            <div className="flex items-center justify-between p-4 rounded-xl border border-[var(--color-border)] bg-gray-50/50">
                                 <div>
-                                    <label className="block text-sm font-medium text-[var(--color-text)] mb-1.5">Nova Senha</label>
-                                    <input type="password" value={form.senha} onChange={e => setForm({ ...form, senha: e.target.value })}
-                                        placeholder="Deixe em branco para manter a senha atual" className={inputClass} />
+                                    <p className="text-sm font-medium text-[var(--color-text)]">Administrador</p>
+                                    <p className="text-xs text-[var(--color-text-muted)]">Acesso total ao sistema, ignora permissões do perfil</p>
                                 </div>
-                            )}
+                                <button
+                                    type="button"
+                                    onClick={() => setForm({ ...form, is_admin: !form.is_admin })}
+                                    className={`relative w-12 h-7 rounded-full transition-colors duration-200 ${form.is_admin ? 'bg-red-500' : 'bg-gray-300'}`}
+                                >
+                                    <span className={`absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full shadow transition-transform duration-200 ${form.is_admin ? 'translate-x-5' : ''}`} />
+                                </button>
+                            </div>
+
+                            {/* Profile Selector */}
                             <div>
-                                <label className="block text-sm font-medium text-[var(--color-text)] mb-1.5">Permissão *</label>
-                                <select value={form.role} onChange={e => setForm({ ...form, role: e.target.value as 'admin' | 'gestor' | 'inquilino' })}
+                                <label className="block text-sm font-medium text-[var(--color-text)] mb-1.5">Perfil de Acesso</label>
+                                <select value={form.perfil_id} onChange={e => setForm({ ...form, perfil_id: e.target.value })}
                                     className={inputClass}>
-                                    {ROLES.map(r => (
-                                        <option key={r.value} value={r.value}>{r.label}</option>
+                                    <option value="">
+                                        {form.is_admin ? '(Admin - acesso total)' : 'Selecione um perfil'}
+                                    </option>
+                                    {perfis.map(p => (
+                                        <option key={p.id} value={p.id}>{p.nome}</option>
                                     ))}
                                 </select>
+                                {!form.is_admin && !form.perfil_id && (
+                                    <p className="text-xs text-amber-600 mt-1">⚠ Sem perfil, o usuário não terá acesso a nenhum módulo.</p>
+                                )}
                             </div>
 
                             {error && (

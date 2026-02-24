@@ -23,11 +23,12 @@
     font-family: var(--font-sans);
     background-color: var(--color-bg);
     color: var(--color-text);
-    font-size: 16px;
     line-height: 1.6;
   }
 
-  input, select, textarea {
-    font-size: 16px;
+  input,
+  select,
+  textarea {
+    font-size: 1rem;
   }
 }

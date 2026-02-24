@@ -9,6 +9,8 @@ const contratosRoutes = require('./routes/contratos');
 const dashboardRoutes = require('./routes/dashboard');
 const unidadesRoutes = require('./routes/unidades');
 const relatoriosRoutes = require('./routes/relatorios');
+const perfisRoutes = require('./routes/perfis');
+const { initAdmin } = require('./db/seed');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -31,12 +33,14 @@ app.use('/api/contratos', contratosRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/unidades', unidadesRoutes);
 app.use('/api/relatorios', relatoriosRoutes);
+app.use('/api/perfis', perfisRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-app.listen(PORT, '0.0.0.0', () => {
+app.listen(PORT, '0.0.0.0', async () => {
     console.log(`🏢 GestaoImoveis API running on http://0.0.0.0:${PORT}`);
+    await initAdmin();
 });

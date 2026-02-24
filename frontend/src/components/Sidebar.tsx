@@ -28,6 +28,7 @@ const navItems = [
 
 const adminItems = [
     { href: '/usuarios', label: 'Usuários', icon: ShieldCheck },
+    { href: '/perfis', label: 'Perfis', icon: ShieldCheck },
 ];
 
 export default function Sidebar() {
@@ -156,7 +157,7 @@ export default function Sidebar() {
                 {/* User Footer */}
                 <div className="p-4 border-t border-white/10">
                     {!collapsed && user && (
-                        <p className="text-xs text-white/60 mb-2 truncate">{user.nome}</p>
+                        <p className="text-sm text-white/60 mb-2 truncate font-medium">{user.nome}</p>
                     )}
                     <button
                         onClick={handleLogout}

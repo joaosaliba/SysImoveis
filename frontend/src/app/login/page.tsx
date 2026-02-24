@@ -6,8 +6,6 @@ import { login, register } from '@/lib/api';
 import { Building2, Eye, EyeOff } from 'lucide-react';
 
 export default function LoginPage() {
-    const [isRegister, setIsRegister] = useState(false);
-    const [nome, setNome] = useState('');
     const [email, setEmail] = useState('');
     const [senha, setSenha] = useState('');
     const [showPassword, setShowPassword] = useState(false);
@@ -17,7 +15,6 @@ export default function LoginPage() {
 
     const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
     const senhaValid = senha.length >= 6;
-    const nomeValid = nome.length >= 2;
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -25,12 +22,7 @@ export default function LoginPage() {
         setLoading(true);
 
         try {
-            if (isRegister) {
-                await register(nome, email, senha);
-                await login(email, senha);
-            } else {
-                await login(email, senha);
-            }
+            await login(email, senha);
             router.push('/dashboard');
         } catch (err: unknown) {
             setError(err instanceof Error ? err.message : 'Erro desconhecido');
@@ -51,34 +43,13 @@ export default function LoginPage() {
                         Sys<span className="text-[var(--color-primary)]">Imóveis</span>
                     </h1>
                     <p className="text-[var(--color-text-muted)] mt-1">
-                        {isRegister ? 'Crie sua conta' : 'Entre na sua conta'}
+                        Entre na sua conta
                     </p>
                 </div>
 
                 {/* Card */}
                 <div className="bg-white rounded-2xl shadow-xl shadow-black/5 p-8">
                     <form onSubmit={handleSubmit} className="space-y-5">
-                        {isRegister && (
-                            <div>
-                                <label className="block text-sm font-medium text-[var(--color-text)] mb-1.5">
-                                    Nome
-                                </label>
-                                <input
-                                    type="text"
-                                    value={nome}
-                                    onChange={(e) => setNome(e.target.value)}
-                                    placeholder="Seu nome completo"
-                                    className={`w-full px-4 py-3 rounded-xl border bg-[var(--color-bg)] text-[var(--color-text)]
-                    focus:outline-none focus:ring-2 transition-all duration-200
-                    ${nome && !nomeValid ? 'border-red-300 focus:ring-red-500/30' : 'border-[var(--color-border)] focus:ring-[var(--color-primary)]/30 focus:border-[var(--color-primary)]'}
-                  `}
-                                />
-                                {nome && !nomeValid && (
-                                    <p className="text-red-500 text-xs mt-1">Nome deve ter ao menos 2 caracteres</p>
-                                )}
-                            </div>
-                        )}
-
                         <div>
                             <label className="block text-sm font-medium text-[var(--color-text)] mb-1.5">
                                 Email
@@ -134,24 +105,15 @@ export default function LoginPage() {
 
                         <button
                             type="submit"
-                            disabled={loading || !emailValid || !senhaValid || (isRegister && !nomeValid)}
+                            disabled={loading || !emailValid || !senhaValid}
                             className="w-full py-3.5 rounded-xl bg-[var(--color-primary)] text-white font-semibold text-base
                 hover:bg-[var(--color-primary-hover)] disabled:opacity-50 disabled:cursor-not-allowed
                 transition-all duration-200 shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40
                 active:scale-[0.98]"
                         >
-                            {loading ? 'Carregando...' : isRegister ? 'Criar Conta' : 'Entrar'}
+                            {loading ? 'Carregando...' : 'Entrar'}
                         </button>
                     </form>
-
-                    <div className="mt-6 text-center">
-                        <button
-                            onClick={() => { setIsRegister(!isRegister); setError(''); }}
-                            className="text-sm text-[var(--color-primary)] hover:text-[var(--color-primary-hover)] font-medium"
-                        >
-                            {isRegister ? 'Já tem conta? Entre aqui' : 'Não tem conta? Cadastre-se'}
-                        </button>
-                    </div>
                 </div>
             </div>
         </div>

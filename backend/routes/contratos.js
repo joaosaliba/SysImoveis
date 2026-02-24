@@ -1,6 +1,6 @@
 const express = require('express');
 const pool = require('../db/pool');
-const { verifyToken } = require('../middleware/auth');
+const { verifyToken, checkPermission } = require('../middleware/auth');
 const { getPaginationParams, formatPaginatedResponse } = require('../db/pagination');
 
 const router = express.Router();
@@ -65,7 +65,7 @@ function generateParcelas(dataInicio, dataFim, valorInicial, diaVencimento, brea
 }
 
 // List all contracts (with joins and pagination)
-router.get('/', async (req, res) => {
+router.get('/', checkPermission('contratos', 'ver'), async (req, res) => {
     try {
         const { page, limit, status, imovel_id, inquilino_id } = req.query;
         const { offset, limit: limitNum, page: pageNum } = getPaginationParams(page, limit);
@@ -131,7 +131,7 @@ router.get('/:id', async (req, res) => {
         const contractResult = await pool.query(`
       SELECT c.*, 
         i.nome_completo AS inquilino_nome, i.cpf AS inquilino_cpf, i.restricoes AS inquilino_restricoes,
-        u.identificador AS unidade_identificador, u.tipo_unidade,
+        u.identificador AS unidade_identificador, u.tipo_unidade, u.propriedade_id,
         p.endereco AS imovel_endereco, p.numero AS imovel_numero, p.cidade AS imovel_cidade, p.nome AS imovel_nome
       FROM contratos c
       JOIN inquilinos i ON c.inquilino_id = i.id
@@ -239,7 +239,7 @@ router.post('/:id/renovar', async (req, res) => {
 });
 
 // Create contract (auto-generates installments)
-router.post('/', async (req, res) => {
+router.post('/', checkPermission('contratos', 'salvar'), async (req, res) => {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
@@ -333,7 +333,7 @@ router.post('/', async (req, res) => {
 });
 
 // Update contract
-router.put('/:id', async (req, res) => {
+router.put('/:id', checkPermission('contratos', 'salvar'), async (req, res) => {
     try {
         const {
             data_inicio, data_fim, qtd_ocupantes, valor_inicial, dia_vencimento, observacoes_contrato,
@@ -366,7 +366,31 @@ router.put('/:id', async (req, res) => {
             return res.status(404).json({ error: 'Contrato não encontrado.' });
         }
 
-        res.json(result.rows[0]);
+        const contrato = result.rows[0];
+
+        // Sync pending installments with new contract values
+        await pool.query(
+            `UPDATE contrato_parcelas SET
+                valor_base = $1,
+                valor_iptu = $2,
+                valor_agua = $3,
+                valor_luz = $4,
+                valor_outros = $5,
+                desconto_pontualidade = $6,
+                updated_at = NOW()
+             WHERE contrato_id = $7 AND status_pagamento = 'pendente'`,
+            [
+                contrato.valor_inicial,
+                contrato.valor_iptu,
+                contrato.valor_agua,
+                contrato.valor_luz,
+                contrato.valor_outros,
+                contrato.desconto_pontualidade,
+                contrato.id
+            ]
+        );
+
+        res.json(contrato);
     } catch (err) {
         console.error('Update contract error:', err);
         res.status(500).json({ error: 'Erro ao atualizar contrato.' });
@@ -414,7 +438,7 @@ router.patch('/:id/encerrar', async (req, res) => {
 });
 
 // Delete contract
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', checkPermission('contratos', 'deletar'), async (req, res) => {
     try {
         const result = await pool.query('DELETE FROM contratos WHERE id = $1 RETURNING id', [req.params.id]);
         if (result.rows.length === 0) {
@@ -428,7 +452,7 @@ router.delete('/:id', async (req, res) => {
 });
 
 // Create standalone installment (avulso)
-router.post('/parcelas/avulso', async (req, res) => {
+router.post('/parcelas/avulso', checkPermission('boletos', 'salvar'), async (req, res) => {
     try {
         const {
             unidade_id, inquilino_id, descricao,
@@ -480,7 +504,7 @@ router.post('/parcelas/avulso', async (req, res) => {
 // ===== INSTALLMENT (PARCELA) SUB-ROUTES =====
 
 // Filtered installments (for Boletos page)
-router.get('/parcelas/filtro', async (req, res) => {
+router.get('/parcelas/filtro', checkPermission('boletos', 'ver'), async (req, res) => {
     try {
         const { dt_inicio, dt_fim, status, imovel_id, inquilino_id } = req.query;
 
@@ -587,7 +611,7 @@ router.get('/:id/parcelas', async (req, res) => {
 });
 
 // Update installment (payment, discount, etc.)
-router.patch('/parcelas/:parcelaId', async (req, res) => {
+router.patch('/parcelas/:parcelaId', checkPermission('boletos', 'salvar'), async (req, res) => {
     try {
         const {
             valor_base, valor_iptu, valor_agua, valor_luz, valor_outros,
@@ -627,7 +651,7 @@ router.patch('/parcelas/:parcelaId', async (req, res) => {
 });
 
 // Delete installment (manually generated or otherwise)
-router.delete('/parcelas/:id', async (req, res) => {
+router.delete('/parcelas/:id', checkPermission('boletos', 'deletar'), async (req, res) => {
     try {
         const result = await pool.query('DELETE FROM contrato_parcelas WHERE id = $1 RETURNING id', [req.params.id]);
         if (result.rows.length === 0) {

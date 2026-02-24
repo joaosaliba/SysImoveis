@@ -1,4 +1,5 @@
 const jwt = require('jsonwebtoken');
+const pool = require('../db/pool');
 
 function verifyToken(req, res, next) {
     const authHeader = req.headers['authorization'];
@@ -26,45 +27,67 @@ function verifyToken(req, res, next) {
 }
 
 /**
- * Middleware para verificar se o usuário tem pelo menos um dos roles especificados
- * @param {string[]} allowedRoles - Array de roles permitidos (ex: ['admin', 'gestor'])
- * @returns {Function} Middleware function
+ * Middleware para verificar se o usuário é admin (is_admin = true)
+ * Substitui o antigo checkRole(['admin'])
  */
-function checkRole(allowedRoles) {
-    if (!Array.isArray(allowedRoles)) {
-        allowedRoles = [allowedRoles];
+function checkAdmin(req, res, next) {
+    if (!req.user) {
+        return res.status(401).json({ error: 'Usuário não autenticado.' });
     }
+    if (req.user.is_admin !== true) {
+        return res.status(403).json({ error: 'Acesso restrito a administradores.' });
+    }
+    next();
+}
 
-    return (req, res, next) => {
+/**
+ * Helper síncrono para verificar se o usuário no req é admin
+ */
+function isAdmin(req) {
+    return req.user && req.user.is_admin === true;
+}
+
+/**
+ * Middleware para verificar permissão granular (modulo + ação)
+ * Admin (is_admin) faz bypass automaticamente
+ */
+function checkPermission(modulo, acao) {
+    return async (req, res, next) => {
         if (!req.user) {
             return res.status(401).json({ error: 'Usuário não autenticado.' });
         }
 
-        if (!allowedRoles.includes(req.user.role)) {
-            return res.status(403).json({
-                error: 'Acesso negado. Permissões insuficientes.',
-                required: allowedRoles,
-                current: req.user.role
-            });
+        // Admin bypass
+        if (req.user.is_admin === true) {
+            return next();
         }
 
-        next();
+        try {
+            const userResult = await pool.query('SELECT perfil_id FROM usuarios WHERE id = $1', [req.user.id]);
+            if (userResult.rows.length === 0) {
+                return res.status(401).json({ error: 'Usuário não encontrado.' });
+            }
+
+            const perfilId = userResult.rows[0].perfil_id;
+            if (!perfilId) {
+                return res.status(403).json({ error: `Acesso negado. Nenhum perfil atribuído.` });
+            }
+
+            const permResult = await pool.query(
+                'SELECT permitido FROM perfil_permissoes WHERE perfil_id = $1 AND modulo = $2 AND acao = $3',
+                [perfilId, modulo, acao]
+            );
+
+            if (permResult.rows.length === 0 || !permResult.rows[0].permitido) {
+                return res.status(403).json({ error: `Acesso negado. Sem permissão para ${acao} em ${modulo}.` });
+            }
+
+            next();
+        } catch (err) {
+            console.error('Check permission error:', err);
+            res.status(500).json({ error: 'Erro ao verificar permissão.' });
+        }
     };
 }
 
-/**
- * Middleware para verificar se o usuário é admin
- */
-function isAdmin(req, res, next) {
-    if (!req.user) {
-        return res.status(401).json({ error: 'Usuário não autenticado.' });
-    }
-
-    if (req.user.role !== 'admin') {
-        return res.status(403).json({ error: 'Acesso negado. Apenas administradores.' });
-    }
-
-    next();
-}
-
-module.exports = { verifyToken, checkRole, isAdmin };
+module.exports = { verifyToken, checkAdmin, isAdmin, checkPermission };

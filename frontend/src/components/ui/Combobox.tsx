@@ -83,7 +83,7 @@ export function Combobox({
                 <Search className="w-4 h-4 text-gray-400 shrink-0" />
                 <input
                     type="text"
-                    className="flex-1 bg-transparent border-none outline-none text-sm p-0 placeholder:text-gray-400"
+                    className="flex-1 bg-transparent border-none outline-none text-sm p-0 placeholder:text-gray-400 min-w-0 truncate"
                     placeholder={selectedOption ? selectedOption.label : placeholder}
                     value={isOpen ? searchTerm : (selectedOption ? selectedOption.label : '')}
                     onChange={(e) => setSearchTerm(e.target.value)}
@@ -101,7 +101,7 @@ export function Combobox({
                             <X className="w-3 h-3" />
                         </button>
                     )}
-                    <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                    <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform shrink-0 ${isOpen ? 'rotate-180' : ''}`} />
                 </div>
             </div>
 
@@ -112,7 +112,7 @@ export function Combobox({
                             <button
                                 key={opt.id}
                                 type="button"
-                                className={`w-full text-left px-4 py-2.5 text-sm transition-colors
+                                className={`w-full text-left px-4 py-2.5 text-sm transition-colors truncate
                                     ${String(value) === String(opt.id)
                                         ? 'bg-[var(--color-primary)]/10 text-[var(--color-primary)] font-semibold'
                                         : 'text-gray-700 hover:bg-gray-50'

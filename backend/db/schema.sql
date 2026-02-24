@@ -11,13 +11,13 @@ CREATE TABLE IF NOT EXISTS usuarios (
     email VARCHAR(255) UNIQUE NOT NULL,
     senha_hash VARCHAR(255) NOT NULL,
     refresh_token TEXT,
-    role VARCHAR(20) DEFAULT 'gestor' CHECK (role IN ('admin', 'gestor', 'inquilino')),
+    is_admin BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Index for role lookups
-CREATE INDEX IF NOT EXISTS idx_usuarios_role ON usuarios(role);
+-- Index for admin lookups
+CREATE INDEX IF NOT EXISTS idx_usuarios_is_admin ON usuarios(is_admin);
 
 -- Propriedades (Imóveis / Edifícios)
 CREATE TABLE IF NOT EXISTS propriedades (
@@ -128,7 +128,6 @@ CREATE TABLE IF NOT EXISTS contrato_renovacoes (
 );
 
 -- Indexes
-CREATE INDEX IF NOT EXISTS idx_usuarios_role ON usuarios(role);
 CREATE INDEX IF NOT EXISTS idx_contratos_inquilino ON contratos(inquilino_id);
 CREATE INDEX IF NOT EXISTS idx_contratos_unidade ON contratos(unidade_id);
 CREATE INDEX IF NOT EXISTS idx_parcelas_contrato ON contrato_parcelas(contrato_id);

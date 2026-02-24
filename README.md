@@ -27,6 +27,8 @@ GestaoImoveis/
 - PostgreSQL
 - JWT (autenticação)
 - bcryptjs (hash de senha)
+- pdfkit (geração de relatórios PDF)
+- node-boleto (geração de boletos bancários)
 
 **Frontend:**
 - Next.js 16 (App Router)
@@ -171,6 +173,8 @@ O sistema possui 3 níveis de acesso:
 | POST | `/api/propriedades/:id/unidades` | Criar unidade | ✅ |
 | PUT | `/api/propriedades/unidades/:id` | Atualizar unidade | ✅ |
 | DELETE | `/api/propriedades/unidades/:id` | Remover unidade | ✅ |
+| GET | `/api/unidades` | Listar todas as unidades (paginado) | ✅ |
+| GET | `/api/propriedades/unidades/all` | Listar todas as unidades (global/seletor) | ✅ |
 
 ### Inquilinos
 
@@ -196,6 +200,12 @@ O sistema possui 3 níveis de acesso:
 | GET | `/api/contratos/:id/parcelas` | Listar parcelas | ✅ |
 | POST | `/api/contratos/parcelas/avulso` | Criar parcela avulsa | ✅ |
 | PATCH | `/api/contratos/parcelas/:id` | Atualizar parcela | ✅ |
+| GET | `/api/contratos/parcelas/filtro` | Listar boletos com filtros avançados | ✅ |
+| POST | `/api/contratos/parcelas/bulk-update` | Atualização em massa de status | ✅ |
+| POST | `/api/contratos/:id/parcelas/gerar` | Geração manual/automática de parcelas | ✅ |
+| GET | `/api/contratos/parcelas/:id/boleto` | Imprimir boleto individual (HTML) | ✅ |
+| GET | `/api/contratos/parcelas/bulk/boletos` | Imprimir boletos em massa (HTML) | ✅ |
+| GET | `/api/contratos/parcelas/bulk/pdf` | Baixar boletos em massa (PDF) | ✅ |
 
 ### Dashboard
 
@@ -212,7 +222,22 @@ O sistema possui 3 níveis de acesso:
 | Método | Endpoint | Descrição | Auth |
 |--------|----------|-----------|------|
 | GET | `/api/relatorios/contrato/:id` | Baixar PDF do contrato | ✅ |
-| GET | `/api/relatorios/boleto/:id` | Baixar PDF do boleto | ✅ |
+| GET | `/api/relatorios/boleto/:id` | Baixar PDF do boleto (Legado) | ✅ |
+
+---
+
+## ✨ Funcionalidades em Destaque
+
+### 💸 Central de Boletos
+Interface centralizada para gestão financeira com:
+- **Filtros Avançados**: Busca por período, status, imóvel ou inquilino.
+- **Ações em Massa**: Seleção múltipla para atualização de status (pago, pendente, etc).
+- **Impressão Inteligente**: Geração de boletos em HTML (ideal para impressão rápida) ou PDF agrupado.
+
+### 📝 Gestão de Contratos
+- **Automação**: Geração automática de parcelas no momento da criação.
+- **Flexibilidade**: Possibilidade de criar cobranças avulsas fora do ciclo normal.
+- **Renovação**: Fluxo simplificado para renovação de contratos com histórico.
 
 ---
 

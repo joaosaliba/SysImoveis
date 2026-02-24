@@ -1,6 +1,6 @@
 const express = require('express');
 const pool = require('../db/pool');
-const { verifyToken } = require('../middleware/auth');
+const { verifyToken, checkPermission } = require('../middleware/auth');
 const { generateContratoPDF, generateBoletoPDF } = require('../services/pdfService');
 const path = require('path');
 const fs = require('fs');
@@ -9,7 +9,7 @@ const router = express.Router();
 router.use(verifyToken);
 
 // Gerar PDF do contrato
-router.get('/contrato/:id', async (req, res) => {
+router.get('/contrato/:id', checkPermission('relatorios', 'ver'), async (req, res) => {
     try {
         const contratoId = req.params.id;
 
@@ -62,7 +62,7 @@ router.get('/contrato/:id', async (req, res) => {
 });
 
 // Gerar PDF do boleto/parcela
-router.get('/boleto/:id', async (req, res) => {
+router.get('/boleto/:id', checkPermission('relatorios', 'ver'), async (req, res) => {
     try {
         const parcelaId = req.params.id;
 

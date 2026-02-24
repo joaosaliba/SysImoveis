@@ -1,76 +1,46 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { getUserRole, hasRole } from '@/lib/api';
+import { useState, useEffect, ReactNode } from 'react';
+import { isAdmin } from '@/lib/api';
 
-interface RequireRoleProps {
-    roles: string | string[];
-    children: React.ReactNode;
-    fallback?: React.ReactNode;
+interface RequireAdminProps {
+    children: ReactNode;
+    fallback?: ReactNode;
 }
 
 /**
- * Componente para proteger conteúdo baseado no role do usuário
- * 
- * Uso:
- * <RequireRole roles="admin">
- *   <ConteudoApenasAdmin />
- * </RequireRole>
- * 
- * <RequireRole roles={['admin', 'gestor']} fallback={<p>Acesso negado</p>}>
- *   <Conteudo />
- * </RequireRole>
+ * Componente para proteger conteúdo exclusivo de administradores.
+ *
+ * Exemplo:
+ * <RequireAdmin>
+ *   <AdminPanel />
+ * </RequireAdmin>
  */
-export default function RequireRole({ roles, children, fallback }: RequireRoleProps) {
-    const [authorized, setAuthorized] = useState(false);
-    const [checked, setChecked] = useState(false);
+export default function RequireAdmin({ children, fallback }: RequireAdminProps) {
+    const [authorized, setAuthorized] = useState<boolean | null>(null);
 
     useEffect(() => {
-        const userRole = getUserRole();
-        const roleList = Array.isArray(roles) ? roles : [roles];
-        
-        setAuthorized(userRole ? roleList.includes(userRole) : false);
-        setChecked(true);
-    }, [roles]);
+        setAuthorized(isAdmin());
+    }, []);
 
-    // Enquanto verifica o role, não renderiza nada (ou poderia mostrar loading)
-    if (!checked) {
-        return null;
-    }
-
-    if (!authorized) {
-        return fallback ? <>{fallback}</> : null;
-    }
-
+    if (authorized === null) return null;
+    if (!authorized) return fallback ? <>{fallback}</> : null;
     return <>{children}</>;
 }
 
 /**
- * Hook para verificar permissões de role
- * 
- * Uso:
- * const { hasRole, isAdmin, isGestor, role } = useRole();
- * 
- * if (hasRole('admin')) { ... }
+ * Hook para verificar se o usuário atual é admin.
+ *
+ * Exemplo:
+ * const { admin } = useAuth();
+ * if (admin) { ... }
  */
-export function useRole() {
-    const [role, setRole] = useState<string | null>(null);
+export function useAuth() {
+    const [admin, setAdmin] = useState(false);
 
     useEffect(() => {
-        setRole(getUserRole());
+        setAdmin(isAdmin());
     }, []);
 
-    const hasRoleCheck = (allowedRoles: string | string[]): boolean => {
-        if (!role) return false;
-        const roles = Array.isArray(allowedRoles) ? allowedRoles : [allowedRoles];
-        return roles.includes(role);
-    };
-
-    return {
-        role,
-        hasRole: hasRoleCheck,
-        isAdmin: hasRoleCheck('admin'),
-        isGestor: hasRoleCheck(['admin', 'gestor']),
-        isInquilino: hasRoleCheck('inquilino'),
-    };
+    return { isAdmin: admin };
 }
