@@ -131,22 +131,30 @@ export default function BoletoPrintPage() {
                             <div className="w-2/3 p-1 font-bold text-sm border-r border-black">Valor do Aluguel:</div>
                             <div className="w-1/3 p-1 text-right">{formatCurrency(parcela.valor_base)}</div>
                         </div>
-                        <div className="flex border-b border-black">
-                            <div className="w-2/3 p-1 font-bold text-sm border-r border-black">Água:</div>
-                            <div className="w-1/3 p-1 text-right">{formatCurrency(parcela.valor_agua)}</div>
-                        </div>
-                        <div className="flex border-b border-black">
-                            <div className="w-2/3 p-1 font-bold text-sm border-r border-black">Luz:</div>
-                            <div className="w-1/3 p-1 text-right">{formatCurrency(parcela.valor_luz)}</div>
-                        </div>
-                        <div className="flex border-b border-black">
-                            <div className="w-2/3 p-1 font-bold text-sm border-r border-black">IPTU:</div>
-                            <div className="w-1/3 p-1 text-right">{formatCurrency(parcela.valor_iptu)}</div>
-                        </div>
-                        <div className="flex border-b border-black">
-                            <div className="w-2/3 p-1 font-bold text-sm border-r border-black">Outros:</div>
-                            <div className="w-1/3 p-1 text-right">{formatCurrency(parcela.valor_outros)}</div>
-                        </div>
+                        {Number(parcela.valor_agua) > 0 && (
+                            <div className="flex border-b border-black">
+                                <div className="w-2/3 p-1 font-bold text-sm border-r border-black">Água:</div>
+                                <div className="w-1/3 p-1 text-right">{formatCurrency(parcela.valor_agua)}</div>
+                            </div>
+                        )}
+                        {Number(parcela.valor_luz) > 0 && (
+                            <div className="flex border-b border-black">
+                                <div className="w-2/3 p-1 font-bold text-sm border-r border-black">Luz:</div>
+                                <div className="w-1/3 p-1 text-right">{formatCurrency(parcela.valor_luz)}</div>
+                            </div>
+                        )}
+                        {Number(parcela.valor_iptu) > 0 && (
+                            <div className="flex border-b border-black">
+                                <div className="w-2/3 p-1 font-bold text-sm border-r border-black">IPTU:</div>
+                                <div className="w-1/3 p-1 text-right">{formatCurrency(parcela.valor_iptu)}</div>
+                            </div>
+                        )}
+                        {Number(parcela.valor_outros) > 0 && (
+                            <div className="flex border-b border-black">
+                                <div className="w-2/3 p-1 font-bold text-sm border-r border-black">{parcela.observacoes || 'Outros'}:</div>
+                                <div className="w-1/3 p-1 text-right">{formatCurrency(parcela.valor_outros)}</div>
+                            </div>
+                        )}
 
                         {/* Total Label Row */}
                         <div className="flex border-b border-black bg-gray-100 print:bg-gray-100">

@@ -24,6 +24,7 @@ interface BoletoData {
     desconto_pontualidade: string;
     data_vencimento: string;
     descricao?: string;
+    observacoes?: string;
     numero_parcela: number;
 }
 
@@ -72,7 +73,7 @@ function BulkBoletoPrintContent() {
 
     const handlePrintPDF = () => {
         const token = localStorage.getItem('accessToken');
-        window.location.href = `/api/contratos/parcelas/bulk/pdf?ids=${idsString}${token ? `&token=${token}` : ''}`;
+        window.open(`/api/contratos/parcelas/bulk/pdf?ids=${idsString}${token ? `&token=${token}` : ''}`, '_blank');
     };
 
     // Helper to chunk array
@@ -152,10 +153,32 @@ function BulkBoletoPrintContent() {
                                                     <span>Aluguel</span>
                                                     <span>{formatCurrency(parcela.valor_base)}</span>
                                                 </div>
-                                                <div className="flex border-b border-black/30 p-1.5 justify-between italic">
-                                                    <span>Condomínio/Outros</span>
-                                                    <span>{formatCurrency(Number(parcela.valor_agua) + Number(parcela.valor_luz) + Number(parcela.valor_iptu) + Number(parcela.valor_outros))}</span>
-                                                </div>
+                                                {Number(parcela.valor_agua) > 0 && (
+                                                    <div className="flex border-b border-black/30 p-1.5 justify-between italic">
+                                                        <span>Água</span>
+                                                        <span>{formatCurrency(parcela.valor_agua)}</span>
+                                                    </div>
+                                                )}
+                                                {Number(parcela.valor_luz) > 0 && (
+                                                    <div className="flex border-b border-black/30 p-1.5 justify-between italic">
+                                                        <span>Luz</span>
+                                                        <span>{formatCurrency(parcela.valor_luz)}</span>
+                                                    </div>
+                                                )}
+                                                {Number(parcela.valor_iptu) > 0 && (
+                                                    <div className="flex border-b border-black/30 p-1.5 justify-between italic">
+                                                        <span>IPTU</span>
+                                                        <span>{formatCurrency(parcela.valor_iptu)}</span>
+                                                    </div>
+                                                )}
+                                                {Number(parcela.valor_outros) > 0 && (
+                                                    <div className="flex border-b border-black/30 p-1.5 justify-between italic">
+                                                        <span className="truncate max-w-[120px]" title={parcela.observacoes || 'Outros'}>
+                                                            {parcela.observacoes || 'Outros'}
+                                                        </span>
+                                                        <span>{formatCurrency(parcela.valor_outros)}</span>
+                                                    </div>
+                                                )}
                                                 <div className="mt-auto bg-gray-100 p-2 flex items-center justify-between border-t border-black">
                                                     <span className="font-bold">TOTAL BRUTO</span>
                                                     <span className="font-bold text-sm">{formatCurrency(totalBruto)}</span>
@@ -173,11 +196,13 @@ function BulkBoletoPrintContent() {
                                                         <div className="truncate text-[9px] font-medium">{parcela.descricao || `Parc. ${parcela.numero_parcela}`}</div>
                                                     </div>
                                                 </div>
-                                                <div className="p-2 border-b border-black flex-1">
+                                                <div className="p-2 border-b border-black flex-1 flex flex-col">
                                                     <span className="font-bold text-[9px] block text-gray-400">OBSERVAÇÕES</span>
                                                     <div className="text-[10px] leading-tight mt-1">
-                                                        Até o vencimento: desconto de <b>{formatCurrency(desconto)}</b><br />
-                                                        Total a pagar: <b className="text-[12px]">{formatCurrency(totalComDesconto)}</b>
+                                                        Até o vencimento: desconto de <b>{formatCurrency(desconto)}</b>
+                                                    </div>
+                                                    <div className="mt-auto bg-gray-200 p-1.5 -mx-2 -mb-2 border-t border-black text-center">
+                                                        <span className="text-[14px] font-black">Total a pagar: {formatCurrency(totalComDesconto)}</span>
                                                     </div>
                                                 </div>
                                                 <div className="flex h-10">

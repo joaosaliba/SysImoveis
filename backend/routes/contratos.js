@@ -1066,7 +1066,11 @@ router.get('/parcelas/bulk/pdf', async (req, res) => {
 
         await generateBulkBoletosPDF(result.rows, filePath);
 
-        res.download(filePath, fileName, (err) => {
+        res.set({
+            'Content-Type': 'application/pdf',
+            'Content-Disposition': `inline; filename="${fileName}"`
+        });
+        res.sendFile(filePath, (err) => {
             if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
             if (err) console.error('Download error:', err);
         });

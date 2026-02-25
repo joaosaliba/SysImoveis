@@ -146,7 +146,10 @@ function generateBoletoPDF(parcela, outputPath) {
             if (parcela.valor_iptu > 0) doc.text(`IPTU: R$ ${parcela.valor_iptu.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`);
             if (parcela.valor_agua > 0) doc.text(`Água: R$ ${parcela.valor_agua.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`);
             if (parcela.valor_luz > 0) doc.text(`Luz: R$ ${parcela.valor_luz.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`);
-            if (parcela.valor_outros > 0) doc.text(`Outros: R$ ${parcela.valor_outros.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`);
+            if (parcela.valor_outros > 0) {
+                const labelOutros = (parcela.observacoes && parcela.observacoes.trim() !== '') ? parcela.observacoes.substring(0, 30) : 'Outros';
+                doc.text(`${labelOutros}: R$ ${parcela.valor_outros.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`);
+            }
             if (parcela.desconto_pontualidade > 0) doc.text(`Desconto: -R$ ${parcela.desconto_pontualidade.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, { color: '#22c55e' });
 
             doc.moveDown(0.5);
@@ -211,7 +214,7 @@ function generateBulkBoletosPDF(parcelas, outputPath) {
 
                 // Row 1: Sacado & CPF
                 doc.rect(marginX, startY, width, 25).fillAndStroke('#f3f4f6', '#000');
-                doc.fillColor('#000').fontSize(8).text('SACADO', marginX + 5, startY + 5);
+                doc.fillColor('#000').fontSize(8).text('Inquilino', marginX + 5, startY + 5);
                 doc.fontSize(10).text(p.inquilino_nome || '', marginX + 5, startY + 14, { width: 350, ellipsis: true });
 
                 doc.moveTo(marginX + 380, startY).lineTo(marginX + 380, startY + 25).stroke();
@@ -227,7 +230,7 @@ function generateBulkBoletosPDF(parcelas, outputPath) {
 
                 doc.moveTo(marginX + 380, row2Y).lineTo(marginX + 380, row2Y + 25).stroke();
                 doc.fontSize(8).text('UNIDADE', marginX + 385, row2Y + 5);
-                doc.fontSize(10).text(`${p.tipo_unidade || ''} ${p.unidade_identificador || ''}`, marginX + 385, row2Y + 14);
+                doc.fontSize(10).text(`${p.unidade_identificador || ''}`, marginX + 385, row2Y + 14);
 
                 // Split Area: Left (Values) | Right (Details)
                 const splitY = row2Y + 25;
@@ -236,12 +239,41 @@ function generateBulkBoletosPDF(parcelas, outputPath) {
 
                 // Left: Items
                 doc.fontSize(10);
-                doc.text('Aluguel', marginX + 5, splitY + 10);
-                doc.text(formatCurrency(p.valor_base), marginX + 150, splitY + 10, { align: 'right', width: 100 });
+                let currentY = splitY + 10;
+                doc.text('Aluguel', marginX + 5, currentY);
+                doc.text(formatCurrency(p.valor_base), marginX + 150, currentY, { align: 'right', width: 100 });
+                currentY += 15;
 
-                doc.text('Condomínio/Outros', marginX + 5, splitY + 25);
-                const outros = Number(p.valor_iptu) + Number(p.valor_agua) + Number(p.valor_luz) + Number(p.valor_outros);
-                doc.text(formatCurrency(outros), marginX + 150, splitY + 25, { align: 'right', width: 100 });
+                const ipt = Number(p.valor_iptu) || 0;
+                if (ipt > 0) {
+                    doc.text('IPTU', marginX + 5, currentY);
+                    doc.text(formatCurrency(ipt), marginX + 150, currentY, { align: 'right', width: 100 });
+                    currentY += 15;
+                }
+
+                const ag = Number(p.valor_agua) || 0;
+                if (ag > 0) {
+                    doc.text('Água', marginX + 5, currentY);
+                    doc.text(formatCurrency(ag), marginX + 150, currentY, { align: 'right', width: 100 });
+                    currentY += 15;
+                }
+
+                const lz = Number(p.valor_luz) || 0;
+                if (lz > 0) {
+                    doc.text('Luz', marginX + 5, currentY);
+                    doc.text(formatCurrency(lz), marginX + 150, currentY, { align: 'right', width: 100 });
+                    currentY += 15;
+                }
+
+                const outr = Number(p.valor_outros) || 0;
+                if (outr > 0) {
+                    const labelOutros = (p.observacoes && p.observacoes.trim() !== '') ? p.observacoes.substring(0, 20) : 'Outros';
+                    doc.text(labelOutros, marginX + 5, currentY);
+                    doc.text(formatCurrency(outr), marginX + 150, currentY, { align: 'right', width: 100 });
+                    currentY += 15;
+                }
+
+                const outros = ipt + ag + lz + outr;
 
                 // Bruto Box
                 const brutoY = startY + height - 30;
@@ -250,21 +282,33 @@ function generateBulkBoletosPDF(parcelas, outputPath) {
                 doc.fontSize(12).text(formatCurrency(Number(p.valor_base) + outros), marginX + 150, brutoY + 10, { align: 'right', width: 100, bold: true });
 
                 // Right: Vencimento & Obs
+                doc.fontSize(8).text('REF', midX + 150, splitY + 5);
+                doc.fontSize(10).text(p.descricao || `Parc. ${p.numero_parcela}`, midX + 150, splitY + 14);
+
                 doc.fontSize(8).text('VENCIMENTO', midX + 5, splitY + 5);
                 doc.fontSize(14).text(formatDate(p.data_vencimento), midX + 5, splitY + 14, { bold: true });
 
-                doc.fontSize(8).text('REF', midX + 150, splitY + 5);
-                doc.fontSize(10).text(p.descricao || `Parc. ${p.numero_parcela}`, midX + 150, splitY + 14);
+
 
                 doc.moveTo(midX, splitY + 35).lineTo(marginX + width, splitY + 35).stroke();
                 doc.fontSize(8).text('OBSERVAÇÕES', midX + 5, splitY + 40);
                 const desconto = Number(p.desconto_pontualidade) || 0;
                 const total = (Number(p.valor_base) + outros) - desconto;
-                doc.fontSize(9).text(`Até o vencimento: desconto de ${formatCurrency(desconto)}`, midX + 5, splitY + 50);
-                doc.fontSize(11).text(`Total a pagar: `, midX + 5, splitY + 65, { continued: true }).text(formatCurrency(total), { bold: true });
+                doc.fontSize(9).text(`Até o vencimento: desconto de ${formatCurrency(desconto)}`, midX + 5, splitY + 48);
+
+                const footerY = startY + height - 40;
+                const totalBoxY = footerY - 18;
+                doc.rect(midX, totalBoxY, width / 2, 18).fillAndStroke('#e5e7eb', '#000');
+
+                doc.fillColor('#000').font('Helvetica-Bold').fontSize(12).text(
+                    `Total a pagar: ${formatCurrency(total)}`,
+                    midX, totalBoxY + 4,
+                    { align: 'center', width: width / 2 }
+                );
+
+                doc.font('Helvetica');
 
                 // Footer Row (Signature)
-                const footerY = startY + height - 40;
                 doc.moveTo(midX, footerY).lineTo(marginX + width, footerY).stroke();
                 doc.fontSize(8).text('DATA PAGTO', midX + 5, footerY + 5);
                 doc.moveTo(midX + 120, footerY).lineTo(midX + 120, startY + height).stroke();
