@@ -66,7 +66,7 @@ export default function DashboardPage() {
             title: 'Imóveis',
             value: stats.total_propriedades,
             icon: Building2,
-            color: 'from-blue-500 to-blue-600',
+            bgClass: 'bg-blue-500 bg-gradient-to-br from-blue-500 to-blue-600',
             shadow: 'shadow-blue-500/25',
             href: '/imoveis',
         },
@@ -74,7 +74,7 @@ export default function DashboardPage() {
             title: 'Unidades',
             value: stats.total_unidades,
             icon: DoorOpen,
-            color: 'from-amber-500 to-amber-600',
+            bgClass: 'bg-amber-500 bg-gradient-to-br from-amber-500 to-amber-600',
             shadow: 'shadow-amber-500/25',
             href: '/imoveis',
         },
@@ -82,7 +82,7 @@ export default function DashboardPage() {
             title: 'Inquilinos',
             value: stats.total_inquilinos,
             icon: Users,
-            color: 'from-emerald-500 to-emerald-600',
+            bgClass: 'bg-emerald-500 bg-gradient-to-br from-emerald-500 to-emerald-600',
             shadow: 'shadow-emerald-500/25',
             href: '/inquilinos',
         },
@@ -90,7 +90,7 @@ export default function DashboardPage() {
             title: 'Contratos Ativos',
             value: stats.contratos_ativos,
             icon: FileText,
-            color: 'from-violet-500 to-violet-600',
+            bgClass: 'bg-violet-500 bg-gradient-to-br from-violet-500 to-violet-600',
             shadow: 'shadow-violet-500/25',
             href: '/contratos',
         },
@@ -98,7 +98,7 @@ export default function DashboardPage() {
             title: 'Parcelas Atrasadas',
             value: stats.parcelas_atrasadas,
             icon: AlertTriangle,
-            color: stats.parcelas_atrasadas > 0 ? 'from-red-500 to-red-600' : 'from-gray-400 to-gray-500',
+            bgClass: stats.parcelas_atrasadas > 0 ? 'bg-red-500 bg-gradient-to-br from-red-500 to-red-600' : 'bg-gray-400 bg-gradient-to-br from-gray-400 to-gray-500',
             shadow: stats.parcelas_atrasadas > 0 ? 'shadow-red-500/25' : 'shadow-gray-400/25',
             href: '/boletos?status=atrasado',
         },
@@ -192,7 +192,7 @@ export default function DashboardPage() {
                                 <Link
                                     key={card.title}
                                     href={card.href}
-                                    className={`group relative overflow-hidden rounded-2xl bg-gradient-to-br ${card.color} p-6 text-white
+                                    className={`group relative overflow-hidden rounded-2xl ${card.bgClass} p-6 text-white
                     shadow-lg ${card.shadow} hover:shadow-xl hover:scale-[1.02] transition-all duration-300`}
                                 >
                                     <div className="flex items-start justify-between">
