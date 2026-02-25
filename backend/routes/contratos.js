@@ -687,16 +687,19 @@ router.post('/parcelas/bulk-update', async (req, res) => {
         }
 
         // Update all
+        // NOTE: $1 and $3 both carry `status` to avoid PostgreSQL error 42P08
+        // (inconsistent type inference when the same parameter appears in SET
+        //  and in a CASE WHEN literal comparison simultaneously).
         await client.query(
             `UPDATE contrato_parcelas 
              SET status_pagamento = $1, 
                  updated_at = NOW(),
                  data_pagamento = CASE 
-                    WHEN $1 = 'pago' THEN COALESCE(data_pagamento, CURRENT_DATE)
+                    WHEN $3 = 'pago' THEN COALESCE(data_pagamento, CURRENT_DATE)
                     ELSE data_pagamento 
                  END
              WHERE id = ANY($2::uuid[])`,
-            [status, ids]
+            [status, ids, status]
         );
 
         await client.query('COMMIT');
