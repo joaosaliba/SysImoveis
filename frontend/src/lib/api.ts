@@ -47,10 +47,12 @@ async function request(endpoint: string, options: RequestInit = {}) {
                 headers['Authorization'] = `Bearer ${localStorage.getItem('accessToken')}`;
                 const retryRes = await fetch(`${API_URL}${endpoint}`, { ...options, headers });
                 if (!retryRes.ok) {
-                    const errData = await retryRes.json();
-                    throw new Error(errData.error || 'Erro na requisição');
+                    const ct2 = retryRes.headers.get('content-type') || '';
+                    const errData = ct2.includes('application/json') ? await retryRes.json() : null;
+                    throw new Error(errData?.error || `Erro ${retryRes.status}`);
                 }
-                return retryRes.json();
+                const ct3 = retryRes.headers.get('content-type') || '';
+                return ct3.includes('application/json') ? retryRes.json() : null;
             } else {
                 localStorage.removeItem('accessToken');
                 localStorage.removeItem('refreshToken');
@@ -67,8 +69,20 @@ async function request(endpoint: string, options: RequestInit = {}) {
     }
 
     if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || 'Erro na requisição');
+        const contentType = res.headers.get('content-type') || '';
+        if (contentType.includes('application/json')) {
+            const data = await res.json();
+            throw new Error(data.error || data.message || 'Erro na requisição');
+        } else {
+            const text = await res.text();
+            throw new Error(text || `Erro ${res.status}: ${res.statusText}`);
+        }
+    }
+
+    // Some endpoints return no content (204)
+    const ct = res.headers.get('content-type') || '';
+    if (!ct.includes('application/json')) {
+        return null;
     }
 
     return res.json();

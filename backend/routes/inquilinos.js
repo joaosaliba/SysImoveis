@@ -5,6 +5,7 @@ const path = require('path');
 const fs = require('fs');
 const { verifyToken, checkPermission } = require('../middleware/auth');
 const { getPaginationParams, formatPaginatedResponse } = require('../db/pagination');
+const { logAudit } = require('../services/auditService');
 
 const router = express.Router();
 router.use(verifyToken);
@@ -108,7 +109,13 @@ router.post('/', checkPermission('inquilinos', 'salvar'), async (req, res) => {
             [cpf, nome_completo, rg, orgao_emissor, uf_rg, JSON.stringify(telefones || []), email, observacoes, restricoes]
         );
 
-        res.status(201).json(result.rows[0]);
+        const novoInquilino = result.rows[0];
+        logAudit(req, 'CRIAR', 'INQUILINO', novoInquilino.id, null,
+            { nome_completo: novoInquilino.nome_completo, cpf: novoInquilino.cpf, email: novoInquilino.email },
+            `Inquilino "${novoInquilino.nome_completo}" criado.`
+        );
+
+        res.status(201).json(novoInquilino);
     } catch (err) {
         console.error('Create tenant error:', err);
         res.status(500).json({ error: 'Erro ao criar inquilino.' });
@@ -119,6 +126,9 @@ router.post('/', checkPermission('inquilinos', 'salvar'), async (req, res) => {
 router.put('/:id', checkPermission('inquilinos', 'salvar'), async (req, res) => {
     try {
         const { cpf, nome_completo, rg, orgao_emissor, uf_rg, telefones, email, observacoes, restricoes } = req.body;
+
+        // Fetch old data for audit
+        const oldData = await pool.query('SELECT nome_completo, cpf, email, restricoes FROM inquilinos WHERE id = $1', [req.params.id]);
 
         const result = await pool.query(
             `UPDATE inquilinos SET
@@ -140,7 +150,14 @@ router.put('/:id', checkPermission('inquilinos', 'salvar'), async (req, res) => 
             return res.status(404).json({ error: 'Inquilino não encontrado.' });
         }
 
-        res.json(result.rows[0]);
+        const atualizado = result.rows[0];
+        logAudit(req, 'ATUALIZAR', 'INQUILINO', req.params.id,
+            oldData.rows[0] || null,
+            { nome_completo: atualizado.nome_completo, cpf: atualizado.cpf, email: atualizado.email, restricoes: atualizado.restricoes },
+            `Inquilino "${atualizado.nome_completo}" atualizado.`
+        );
+
+        res.json(atualizado);
     } catch (err) {
         console.error('Update tenant error:', err);
         if (err.code === '23505') {
@@ -153,6 +170,9 @@ router.put('/:id', checkPermission('inquilinos', 'salvar'), async (req, res) => 
 // Delete tenant
 router.delete('/:id', checkPermission('inquilinos', 'deletar'), async (req, res) => {
     try {
+        // Fetch data before delete for audit
+        const oldData = await pool.query('SELECT nome_completo, cpf FROM inquilinos WHERE id = $1', [req.params.id]);
+
         // Also delete files from disk
         const docs = await pool.query('SELECT nome_arquivo FROM inquilino_documentos WHERE inquilino_id = $1', [req.params.id]);
         for (const doc of docs.rows) {
@@ -164,6 +184,13 @@ router.delete('/:id', checkPermission('inquilinos', 'deletar'), async (req, res)
         if (result.rows.length === 0) {
             return res.status(404).json({ error: 'Inquilino não encontrado.' });
         }
+
+        const nome = oldData.rows[0]?.nome_completo || req.params.id;
+        logAudit(req, 'EXCLUIR', 'INQUILINO', req.params.id,
+            oldData.rows[0] || null, null,
+            `Inquilino "${nome}" excluído.`
+        );
+
         res.json({ message: 'Inquilino removido com sucesso.' });
     } catch (err) {
         console.error('Delete tenant error:', err);

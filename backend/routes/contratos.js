@@ -2,6 +2,7 @@ const express = require('express');
 const pool = require('../db/pool');
 const { verifyToken, checkPermission } = require('../middleware/auth');
 const { getPaginationParams, formatPaginatedResponse } = require('../db/pagination');
+const { logAudit } = require('../services/auditService');
 
 const router = express.Router();
 router.use(verifyToken);
@@ -319,6 +320,11 @@ router.post('/', checkPermission('contratos', 'salvar'), async (req, res) => {
             [contrato.id]
         );
 
+        logAudit(req, 'CRIAR', 'CONTRATO', contrato.id, null,
+            { inquilino_id: contrato.inquilino_id, unidade_id: contrato.unidade_id, data_inicio, data_fim, valor_inicial },
+            `Contrato criado para unidade ${unidade_id} (${parcelas.length} parcelas geradas).`
+        );
+
         res.status(201).json({
             ...fullContract.rows[0],
             parcelas: parcelasResult.rows
@@ -390,6 +396,11 @@ router.put('/:id', checkPermission('contratos', 'salvar'), async (req, res) => {
             ]
         );
 
+        logAudit(req, 'ATUALIZAR', 'CONTRATO', req.params.id, null,
+            { valor_inicial, dia_vencimento, data_inicio, data_fim },
+            `Contrato atualizado (parcelas pendentes sincronizadas).`
+        );
+
         res.json(contrato);
     } catch (err) {
         console.error('Update contract error:', err);
@@ -427,6 +438,10 @@ router.patch('/:id/encerrar', async (req, res) => {
         );
 
         await client.query('COMMIT');
+        logAudit(req, 'ENCERRAR', 'CONTRATO', req.params.id, null,
+            { status_encerrado: true },
+            `Contrato encerrado. Parcelas pendentes canceladas.`
+        );
         res.json({ message: 'Contrato encerrado com sucesso.', contrato: result.rows[0] });
     } catch (err) {
         await client.query('ROLLBACK');
@@ -643,7 +658,24 @@ router.patch('/parcelas/:parcelaId', checkPermission('boletos', 'salvar'), async
             return res.status(404).json({ error: 'Parcela não encontrada.' });
         }
 
-        res.json(result.rows[0]);
+        const parcela = result.rows[0];
+
+        // Build a friendly audit message
+        let detalhe = `Parcela atualizada.`;
+        if (status_pagamento === 'pago') {
+            detalhe = `Parcela marcada como PAGA. Valor pago: ${valor_pago || '-'}. Data: ${data_pagamento || 'hoje'}.`;
+        } else if (status_pagamento === 'cancelado') {
+            detalhe = `Parcela cancelada.`;
+        } else if (status_pagamento === 'pendente') {
+            detalhe = `Status revertido para pendente.`;
+        }
+
+        logAudit(req, 'ATUALIZAR', 'PARCELA', req.params.parcelaId, null,
+            { status_pagamento: parcela.status_pagamento, valor_pago: parcela.valor_pago, data_pagamento: parcela.data_pagamento },
+            detalhe
+        );
+
+        res.json(parcela);
     } catch (err) {
         console.error('Update installment error:', err);
         res.status(500).json({ error: 'Erro ao atualizar parcela.' });
@@ -703,6 +735,25 @@ router.post('/parcelas/bulk-update', async (req, res) => {
         );
 
         await client.query('COMMIT');
+
+        // Build a friendly audit message
+        const statusLabel = {
+            pago: 'PAGO',
+            pendente: 'PENDENTE',
+            cancelado: 'CANCELADO',
+            atrasado: 'ATRASADO'
+        }[status] || status.toUpperCase();
+
+        let detalhe = `${ids.length} parcela(s) marcada(s) como ${statusLabel}.`;
+        if (status === 'pago') {
+            detalhe = `${ids.length} parcela(s) marcada(s) como PAGA. Data de pagamento registrada automaticamente.`;
+        }
+
+        logAudit(req, 'ATUALIZAR', 'PARCELA', null, null,
+            { ids, status_novo: status },
+            detalhe
+        );
+
         res.json({ message: 'Parcelas atualizadas com sucesso.' });
     } catch (err) {
         await client.query('ROLLBACK');

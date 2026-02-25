@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../db/pool');
 const { verifyToken, checkAdmin } = require('../middleware/auth');
-const getPagination = require('../db/pagination');
+const { getPaginationParams, formatPaginatedResponse } = require('../db/pagination');
 
 // Middleware to ensure user is authenticated and is admin
 router.use(verifyToken);
@@ -55,6 +55,8 @@ router.get('/', async (req, res) => {
         const whereString = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
 
         // Pagination
+        const { offset, limit: limitNum, page: pageNum } = getPaginationParams(page, limit);
+
         const baseQuery = `
             FROM auditoria a
             LEFT JOIN usuarios u ON a.usuario_id = u.id
@@ -63,8 +65,6 @@ router.get('/', async (req, res) => {
 
         const countResult = await pool.query(`SELECT COUNT(*) as total ${baseQuery}`, queryParams);
         const totalItems = parseInt(countResult.rows[0].total, 10);
-
-        const pagination = getPagination(page, limit, totalItems);
 
         const query = `
             SELECT 
@@ -76,12 +76,9 @@ router.get('/', async (req, res) => {
             LIMIT $${queryParams.length + 1} OFFSET $${queryParams.length + 2}
         `;
 
-        const { rows } = await pool.query(query, [...queryParams, pagination.limit, pagination.offset]);
+        const { rows } = await pool.query(query, [...queryParams, limitNum, offset]);
 
-        res.json({
-            data: rows,
-            pagination
-        });
+        res.json(formatPaginatedResponse(rows, totalItems, pageNum, limitNum));
 
     } catch (error) {
         console.error('Error fetching auditoria:', error);

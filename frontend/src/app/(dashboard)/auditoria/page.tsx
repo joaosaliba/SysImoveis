@@ -128,6 +128,7 @@ export default function AuditoriaPage() {
             case 'CRIAR': return 'bg-green-100 text-green-700';
             case 'ATUALIZAR': return 'bg-blue-100 text-blue-700';
             case 'EXCLUIR': return 'bg-red-100 text-red-700';
+            case 'ENCERRAR': return 'bg-orange-100 text-orange-700';
             case 'LOGIN': return 'bg-purple-100 text-purple-700';
             default: return 'bg-gray-100 text-gray-700';
         }
@@ -248,8 +249,8 @@ export default function AuditoriaPage() {
                                 <th className="px-6 py-4 text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider">Usuário</th>
                                 <th className="px-6 py-4 text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider">Ação</th>
                                 <th className="px-6 py-4 text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider">Entidade</th>
-                                <th className="px-6 py-4 text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider">IP</th>
-                                <th className="px-6 py-4 text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider text-center">Detalhes</th>
+                                <th className="px-6 py-4 text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider">Descrição</th>
+                                <th className="px-6 py-4 text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider text-center">+</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-[var(--color-border)] text-sm">
@@ -269,25 +270,28 @@ export default function AuditoriaPage() {
                                             {formatDataHora(item.created_at)}
                                         </td>
                                         <td className="px-6 py-4 font-medium text-gray-800">
-                                            {item.usuario_nome || 'Sistema / Anonimo'}
+                                            <div>{item.usuario_nome || <span className="text-gray-400 italic">Sistema</span>}</div>
+                                            {item.usuario_email && <div className="text-xs text-gray-400">{item.usuario_email}</div>}
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap">
                                             <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getAcaoColor(item.acao)}`}>
                                                 {item.acao}
                                             </span>
                                         </td>
-                                        <td className="px-6 py-4 text-gray-600">
+                                        <td className="px-6 py-4 text-gray-600 font-medium">
                                             {item.entidade}
-                                            {item.entidade_id && <span className="block text-xs text-gray-400 truncate max-w-[120px]" title={item.entidade_id}>{item.entidade_id}</span>}
                                         </td>
-                                        <td className="px-6 py-4 text-xs text-gray-500 font-mono">
-                                            {item.ip}
+                                        <td className="px-6 py-4 text-gray-700 max-w-[240px]">
+                                            {item.detalhes
+                                                ? <span className="text-sm">{item.detalhes}</span>
+                                                : <span className="text-gray-400 italic text-xs">—</span>
+                                            }
                                         </td>
                                         <td className="px-6 py-4 text-center">
                                             <button
                                                 onClick={() => setSelectedAudit(item)}
                                                 className="p-2 inline-flex items-center justify-center rounded-lg text-blue-600 hover:bg-blue-50 transition-colors"
-                                                title="Ver Detalhes"
+                                                title="Ver Detalhes Completos"
                                             >
                                                 <FileText className="w-4 h-4" />
                                             </button>
