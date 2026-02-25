@@ -15,6 +15,7 @@ import {
     X,
     Banknote,
     ShieldCheck,
+    History,
 } from 'lucide-react';
 import { logout, getUser, isAdmin } from '@/lib/api';
 
@@ -29,6 +30,7 @@ const navItems = [
 const adminItems = [
     { href: '/usuarios', label: 'Usuários', icon: ShieldCheck },
     { href: '/perfis', label: 'Perfis', icon: ShieldCheck },
+    { href: '/auditoria', label: 'Auditoria', icon: History },
 ];
 
 export default function Sidebar() {

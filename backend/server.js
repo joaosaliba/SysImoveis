@@ -19,11 +19,13 @@ const PORT = process.env.PORT || 3001;
 app.use(cors({ origin: 'http://localhost:3000', credentials: true }));
 app.use(express.json());
 
-// Logger middleware
+// Logger and Audit middlewares
+const auditMiddleware = require('./middleware/auditMiddleware');
 app.use((req, res, next) => {
     console.log(`[BACKEND] ${req.method} ${req.url}`);
     next();
 });
+app.use(auditMiddleware);
 
 // Routes
 app.use('/api/auth', authRoutes);
@@ -34,6 +36,7 @@ app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/unidades', unidadesRoutes);
 app.use('/api/relatorios', relatoriosRoutes);
 app.use('/api/perfis', perfisRoutes);
+app.use('/api/auditoria', require('./routes/auditoria'));
 
 // Health check
 app.get('/api/health', (req, res) => {
