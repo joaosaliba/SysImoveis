@@ -206,7 +206,8 @@ export default function InquilinosPage() {
             focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/30 focus:border-[var(--color-primary)] transition-all" />
             </div>
 
-            <div className="bg-white rounded-2xl shadow-sm border border-[var(--color-border)] overflow-hidden">
+            {/* ===== TABELA DESKTOP ===== */}
+            <div className="hidden md:block bg-white rounded-2xl shadow-sm border border-[var(--color-border)] overflow-hidden">
                 <div className="overflow-x-auto">
                     <table className="w-full text-left min-w-[1000px]">
                         <thead className="bg-gray-50/80">
@@ -259,6 +260,51 @@ export default function InquilinosPage() {
                         </tbody>
                     </table>
                 </div>
+            </div>
+
+            {/* ===== CARDS MOBILE ===== */}
+            <div className="md:hidden space-y-3">
+                {loading ? (
+                    <div className="bg-white rounded-2xl shadow-sm border border-[var(--color-border)] p-6 text-center text-[var(--color-text-muted)]">
+                        Carregando...
+                    </div>
+                ) : inquilinos.length === 0 ? (
+                    <div className="bg-white rounded-2xl shadow-sm border border-[var(--color-border)] p-10 text-center">
+                        <Users className="w-14 h-14 text-gray-300 mx-auto mb-3" />
+                        <p className="text-[var(--color-text-muted)] text-lg">Nenhum inquilino encontrado</p>
+                    </div>
+                ) : inquilinos.map(t => (
+                    <div key={t.id} className="bg-white rounded-2xl shadow-sm border border-[var(--color-border)] p-5">
+                        <div className="flex items-start justify-between gap-3">
+                            <div className="flex-1 min-w-0">
+                                <p className="text-lg font-bold text-[var(--color-text)] leading-snug">{t.nome_completo}</p>
+                                <p className="text-base text-[var(--color-text-muted)] font-mono mt-1">{t.cpf}</p>
+                                {Array.isArray(t.telefones) && t.telefones.length > 0 && (
+                                    <p className="text-base text-[var(--color-text-muted)] mt-1">{t.telefones[0]}</p>
+                                )}
+                                {t.restricoes && (
+                                    <span className="inline-flex items-center gap-1.5 mt-2 px-3 py-1 rounded-full text-sm font-semibold bg-red-100 text-red-700">
+                                        <AlertTriangle className="w-4 h-4" /> Restrição
+                                    </span>
+                                )}
+                            </div>
+                            <div className="flex items-center gap-2 flex-shrink-0">
+                                <button
+                                    onClick={() => openEdit(t)}
+                                    className="p-3 rounded-xl bg-blue-50 text-[var(--color-primary)] hover:bg-blue-100 transition-colors"
+                                >
+                                    <Pencil className="w-5 h-5" />
+                                </button>
+                                <button
+                                    onClick={() => handleDelete(t.id)}
+                                    className="p-3 rounded-xl bg-red-50 text-red-500 hover:bg-red-100 transition-colors"
+                                >
+                                    <Trash2 className="w-5 h-5" />
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                ))}
             </div>
 
             {pagination && (

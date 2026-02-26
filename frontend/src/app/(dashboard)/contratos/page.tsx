@@ -537,8 +537,8 @@ export default function ContratosPage() {
             focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/30 focus:border-[var(--color-primary)]" />
             </div>
 
-            {/* Table */}
-            <div className="bg-white rounded-2xl shadow-sm border border-[var(--color-border)] overflow-hidden">
+            {/* ===== TABELA DESKTOP ===== */}
+            <div className="hidden md:block bg-white rounded-2xl shadow-sm border border-[var(--color-border)] overflow-hidden">
                 <div className="overflow-x-auto">
                     <table className="w-full text-left min-w-[1000px]">
                         <thead className="bg-gray-50/80">
@@ -614,8 +614,8 @@ export default function ContratosPage() {
                         </tbody>
                     </table>
                 </div>
-                {/* Pagination */}
-                <div className="p-4 border-t border-[var(--color-border)]">
+                {/* Pagination Desktop */}
+                <div className="p-4 border-t border-[var(--color-border)] hidden md:block">
                     {pagination && (
                         <Pagination
                             currentPage={pagination.page}
@@ -625,6 +625,95 @@ export default function ContratosPage() {
                         />
                     )}
                 </div>
+            </div>
+
+            {/* ===== CARDS MOBILE ===== */}
+            <div className="md:hidden space-y-3">
+                {loading ? (
+                    <div className="bg-white rounded-2xl shadow-sm border border-[var(--color-border)] p-6 text-center text-[var(--color-text-muted)]">
+                        Carregando...
+                    </div>
+                ) : contratos.length === 0 ? (
+                    <div className="bg-white rounded-2xl shadow-sm border border-[var(--color-border)] p-10 text-center">
+                        <FileText className="w-14 h-14 text-gray-300 mx-auto mb-3" />
+                        <p className="text-[var(--color-text-muted)] text-lg">Nenhum contrato encontrado</p>
+                    </div>
+                ) : contratos.map(c => (
+                    <div key={c.id} className="bg-white rounded-2xl shadow-sm border border-[var(--color-border)] p-5">
+                        <div className="flex items-start justify-between gap-3 mb-3">
+                            <div className="flex-1 min-w-0">
+                                <p className="text-lg font-bold text-[var(--color-text)] leading-snug">{c.inquilino_nome}</p>
+                                <p className="text-base text-[var(--color-text-muted)] mt-1">
+                                    {c.imovel_endereco}{c.imovel_numero ? `, ${c.imovel_numero}` : ''}
+                                    <br />
+                                    <span className="font-medium text-gray-700">Unidade: {c.unidade_identificador}</span>
+                                </p>
+                                {c.inquilino_restricoes && (
+                                    <span className="inline-flex items-center gap-1 mt-2 px-3 py-1 rounded-full text-sm font-semibold bg-red-100 text-red-700">
+                                        <AlertTriangle className="w-4 h-4" /> Restrição
+                                    </span>
+                                )}
+                            </div>
+                            <div className="flex-shrink-0">
+                                {c.status_encerrado
+                                    ? <span className="px-3 py-1 rounded-full text-sm font-bold bg-gray-100 text-gray-600">Encerrado</span>
+                                    : <span className="px-3 py-1 rounded-full text-sm font-bold bg-green-100 text-green-700">Ativo</span>
+                                }
+                            </div>
+                        </div>
+
+                        <div className="flex items-center justify-between mb-4 mt-2">
+                            <p className="text-2xl font-bold text-[var(--color-text)]">
+                                {formatCurrency(c.valor_inicial)}
+                            </p>
+                            <div className="text-right text-sm text-gray-500">
+                                <p>{formatDate(c.data_inicio)}</p>
+                                <p>até {formatDate(c.data_fim)}</p>
+                            </div>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-2 border-t border-[var(--color-border)] pt-3">
+                            <button
+                                onClick={() => viewDetail(c.id)}
+                                className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-[var(--color-primary)]/10 text-[var(--color-primary)] font-semibold hover:bg-[var(--color-primary)]/20 transition-colors"
+                            >
+                                <Eye className="w-5 h-5" /> Detalhes
+                            </button>
+                            <button
+                                onClick={() => window.open(`/api/relatorios/contrato/${c.id}`, '_blank')}
+                                className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-green-50 text-green-700 font-semibold hover:bg-green-100 transition-colors"
+                            >
+                                <Download className="w-5 h-5" /> PDF
+                            </button>
+                            <button
+                                onClick={() => openEdit(c)}
+                                className="p-3 rounded-xl bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors"
+                            >
+                                <Pencil className="w-5 h-5" />
+                            </button>
+                            {!c.status_encerrado && (
+                                <button
+                                    onClick={() => handleEncerrar(c.id)}
+                                    className="p-3 rounded-xl bg-red-50 text-red-600 hover:bg-red-100 transition-colors"
+                                >
+                                    <Ban className="w-5 h-5" />
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                ))}
+
+                {/* Pagination Mobile */}
+                {pagination && (
+                    <div className="pt-2">
+                        <Pagination
+                            currentPage={pagination.page}
+                            totalPages={pagination.totalPages}
+                            onPageChange={setCurrentPage}
+                            onLimitChange={setItemsPerPage}
+                        />
+                    </div>
+                )}
             </div>
 
             {/* New Contract Form Modal */}

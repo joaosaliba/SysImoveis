@@ -58,9 +58,9 @@ export function Pagination({ currentPage, totalPages, onPageChange, onLimitChang
                 <button
                     onClick={() => onPageChange(currentPage - 1)}
                     disabled={currentPage === 1}
-                    className="p-2 rounded-lg hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed text-gray-600 transition-colors"
+                    className="p-3 md:p-2 rounded-lg hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed text-gray-600 transition-colors"
                 >
-                    <ChevronLeft className="w-5 h-5" />
+                    <ChevronLeft className="w-6 h-6 md:w-5 md:h-5" />
                 </button>
 
                 {getPageNumbers().map((page, index) => (
@@ -69,7 +69,7 @@ export function Pagination({ currentPage, totalPages, onPageChange, onLimitChang
                             key={index}
                             onClick={() => onPageChange(page)}
                             className={`
-                                w-8 h-8 rounded-lg text-sm font-medium transition-colors
+                                w-11 h-11 md:w-8 md:h-8 rounded-lg text-base md:text-sm font-medium transition-colors
                                 ${currentPage === page
                                     ? 'bg-[var(--color-primary)] text-white shadow-sm'
                                     : 'text-gray-600 hover:bg-gray-100'
@@ -86,9 +86,9 @@ export function Pagination({ currentPage, totalPages, onPageChange, onLimitChang
                 <button
                     onClick={() => onPageChange(currentPage + 1)}
                     disabled={currentPage === totalPages}
-                    className="p-2 rounded-lg hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed text-gray-600 transition-colors"
+                    className="p-3 md:p-2 rounded-lg hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed text-gray-600 transition-colors"
                 >
-                    <ChevronRight className="w-5 h-5" />
+                    <ChevronRight className="w-6 h-6 md:w-5 md:h-5" />
                 </button>
             </div>
         </div>

@@ -287,11 +287,11 @@ export default function ImoveisPage() {
                                 </button>
                                 <div className="flex-1 min-w-0">
                                     <div className="flex items-center gap-2">
-                                        <span className="text-sm font-semibold text-[var(--color-text)] truncate">
+                                        <span className="text-base md:text-sm font-semibold text-[var(--color-text)] truncate">
                                             {p.nome || `${p.endereco}${p.numero ? `, ${p.numero}` : ''}`}
                                         </span>
                                     </div>
-                                    <p className="text-xs text-[var(--color-text-muted)] mt-0.5 truncate">
+                                    <p className="text-sm text-[var(--color-text-muted)] mt-0.5 truncate">
                                         {p.nome ? `${p.endereco}${p.numero ? `, ${p.numero}` : ''} — ` : ''}{p.cidade}/{p.uf}
                                         {p.administrador ? ` • ${p.administrador}` : ''}
                                     </p>
@@ -310,16 +310,16 @@ export default function ImoveisPage() {
                             </div>
                             <div className="flex items-center justify-end gap-1 ml-9 md:ml-0">
                                 <button onClick={() => toggleExpand(p.id)}
-                                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-amber-50 text-amber-700 text-xs font-semibold hover:bg-amber-100 transition-colors whitespace-nowrap">
-                                    <DoorOpen className="w-3.5 h-3.5" />
+                                    className="flex items-center gap-1.5 px-3 py-2.5 md:py-2 rounded-lg bg-amber-50 text-amber-700 text-sm font-semibold hover:bg-amber-100 transition-colors whitespace-nowrap">
+                                    <DoorOpen className="w-4 h-4" />
                                     Unidades
                                     {expandedProp === p.id ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                                 </button>
-                                <button onClick={() => openEditProp(p)} className="p-2 rounded-lg hover:bg-blue-50 text-[var(--color-primary)]">
-                                    <Pencil className="w-4 h-4" />
+                                <button onClick={() => openEditProp(p)} className="p-3 md:p-2 rounded-lg hover:bg-blue-50 text-[var(--color-primary)]">
+                                    <Pencil className="w-5 h-5 md:w-4 md:h-4" />
                                 </button>
-                                <button onClick={() => handleDeleteProp(p.id)} className="p-2 rounded-lg hover:bg-red-50 text-red-500">
-                                    <Trash2 className="w-4 h-4" />
+                                <button onClick={() => handleDeleteProp(p.id)} className="p-3 md:p-2 rounded-lg hover:bg-red-50 text-red-500">
+                                    <Trash2 className="w-5 h-5 md:w-4 md:h-4" />
                                 </button>
                             </div>
                         </div>

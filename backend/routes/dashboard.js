@@ -17,9 +17,11 @@ router.get('/', checkPermission('dashboard', 'ver'), async (req, res) => {
        WHERE status_pagamento = 'pendente' AND data_vencimento < CURRENT_DATE`
     );
     const receitaMensal = await pool.query(
-      `SELECT COALESCE(SUM(valor_pago), 0) as total FROM contrato_parcelas
+      `SELECT COALESCE(SUM(
+        COALESCE(valor_pago, valor_base + COALESCE(valor_iptu,0) + COALESCE(valor_agua,0) + COALESCE(valor_luz,0) + COALESCE(valor_outros,0) - COALESCE(desconto_pontualidade,0))
+      ), 0) as total FROM contrato_parcelas
        WHERE status_pagamento = 'pago'
-       AND date_trunc('month', data_pagamento) = date_trunc('month', CURRENT_DATE)`
+       AND date_trunc('month', COALESCE(data_pagamento, data_vencimento)) = date_trunc('month', CURRENT_DATE)`
     );
 
     res.json({
@@ -66,13 +68,15 @@ router.get('/receita-mensal', async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT 
-        to_char(date_trunc('month', data_pagamento), 'MM/YYYY') as mes,
-        COALESCE(SUM(valor_pago), 0) as total
+        to_char(date_trunc('month', COALESCE(data_pagamento, data_vencimento)), 'MM/YYYY') as mes,
+        COALESCE(SUM(
+          COALESCE(valor_pago, valor_base + COALESCE(valor_iptu,0) + COALESCE(valor_agua,0) + COALESCE(valor_luz,0) + COALESCE(valor_outros,0) - COALESCE(desconto_pontualidade,0))
+        ), 0) as total
       FROM contrato_parcelas
       WHERE status_pagamento = 'pago'
-        AND data_pagamento >= (CURRENT_DATE - INTERVAL '12 months')
-      GROUP BY date_trunc('month', data_pagamento)
-      ORDER BY date_trunc('month', data_pagamento)
+        AND COALESCE(data_pagamento, data_vencimento) >= (CURRENT_DATE - INTERVAL '12 months')
+      GROUP BY date_trunc('month', COALESCE(data_pagamento, data_vencimento))
+      ORDER BY date_trunc('month', COALESCE(data_pagamento, data_vencimento))
     `);
 
     // Fill in missing months with 0
@@ -141,14 +145,16 @@ router.get('/receita-por-imovel', async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT 
-        p.nome || ' - ' || p.endereco as imovel,
-        COALESCE(SUM(cp.valor_pago), 0) as total
+        COALESCE(p.nome, '') || ' - ' || p.endereco as imovel,
+        COALESCE(SUM(
+          COALESCE(cp.valor_pago, cp.valor_base + COALESCE(cp.valor_iptu,0) + COALESCE(cp.valor_agua,0) + COALESCE(cp.valor_luz,0) + COALESCE(cp.valor_outros,0) - COALESCE(cp.desconto_pontualidade,0))
+        ), 0) as total
       FROM contrato_parcelas cp
       JOIN contratos c ON cp.contrato_id = c.id
       JOIN unidades u ON c.unidade_id = u.id
       JOIN propriedades p ON u.propriedade_id = p.id
       WHERE cp.status_pagamento = 'pago'
-        AND cp.data_pagamento >= date_trunc('month', CURRENT_DATE)
+        AND date_trunc('month', COALESCE(cp.data_pagamento, cp.data_vencimento)) >= date_trunc('month', CURRENT_DATE)
       GROUP BY p.id, p.nome, p.endereco
       ORDER BY total DESC
       LIMIT 10

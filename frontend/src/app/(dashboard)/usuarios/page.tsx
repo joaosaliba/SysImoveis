@@ -186,7 +186,8 @@ export default function UsuariosPage() {
                         focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/30 focus:border-[var(--color-primary)]" />
             </div>
 
-            <div className="bg-white rounded-2xl shadow-sm border border-[var(--color-border)] overflow-hidden">
+            {/* ===== TABELA DESKTOP ===== */}
+            <div className="hidden md:block bg-white rounded-2xl shadow-sm border border-[var(--color-border)] overflow-hidden">
                 <div className="overflow-x-auto">
                     <table className="w-full text-left">
                         <thead className="bg-gray-50/80">
@@ -252,6 +253,60 @@ export default function UsuariosPage() {
                         </tbody>
                     </table>
                 </div>
+            </div>
+
+            {/* ===== CARDS MOBILE ===== */}
+            <div className="md:hidden space-y-3">
+                {loading ? (
+                    <div className="bg-white rounded-2xl shadow-sm border border-[var(--color-border)] p-6 text-center text-[var(--color-text-muted)]">
+                        Carregando...
+                    </div>
+                ) : usuarios.length === 0 ? (
+                    <div className="bg-white rounded-2xl shadow-sm border border-[var(--color-border)] p-10 text-center">
+                        <Users className="w-14 h-14 text-gray-300 mx-auto mb-3" />
+                        <p className="text-[var(--color-text-muted)] text-lg">Nenhum usuário encontrado</p>
+                    </div>
+                ) : usuarios.map(u => (
+                    <div key={u.id} className="bg-white rounded-2xl shadow-sm border border-[var(--color-border)] p-5">
+                        <div className="flex items-start justify-between gap-3 mb-3">
+                            <div className="flex-1 min-w-0">
+                                <p className="text-lg font-bold text-[var(--color-text)] leading-snug">{u.nome}</p>
+                                <p className="text-base text-[var(--color-text-muted)] mt-1 truncate">{u.email}</p>
+
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                    {u.is_admin && (
+                                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-semibold bg-red-100 text-red-700">
+                                            <ShieldCheck className="w-4 h-4" /> Admin
+                                        </span>
+                                    )}
+                                    {u.perfil_nome && (
+                                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-semibold bg-purple-100 text-purple-700">
+                                            <ShieldCheck className="w-4 h-4" /> {u.perfil_nome}
+                                        </span>
+                                    )}
+                                    {!u.is_admin && !u.perfil_nome && (
+                                        <span className="text-sm font-medium text-gray-500 mt-1">Sem perfil</span>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 border-t border-[var(--color-border)] pt-3 mt-4">
+                            <button
+                                onClick={() => openEdit(u)}
+                                className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-blue-50 text-[var(--color-primary)] font-semibold hover:bg-blue-100 transition-colors"
+                            >
+                                <Pencil className="w-5 h-5" /> Editar
+                            </button>
+                            <button
+                                onClick={() => handleDelete(u.id)}
+                                className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-red-50 text-red-600 font-semibold hover:bg-red-100 transition-colors"
+                            >
+                                <Trash2 className="w-5 h-5" /> Excluir
+                            </button>
+                        </div>
+                    </div>
+                ))}
             </div>
 
             {pagination && (

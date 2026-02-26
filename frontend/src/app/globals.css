@@ -32,3 +32,21 @@
     font-size: 1rem;
   }
 }
+
+/* ===== MOBILE ACCESSIBILITY (idosos) ===== */
+@media (max-width: 767px) {
+  html {
+    font-size: 18px;
+  }
+
+  body {
+    line-height: 1.75;
+  }
+
+  input,
+  select,
+  textarea {
+    min-height: 52px;
+    font-size: 1rem;
+  }
+}

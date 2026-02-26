@@ -292,8 +292,8 @@ function BoletosContent() {
                 </div>
             </div>
 
-            {/* List */}
-            <div className="bg-white rounded-2xl shadow-sm border border-[var(--color-border)] overflow-hidden">
+            {/* ===== TABELA DESKTOP ===== */}
+            <div className="hidden md:block bg-white rounded-2xl shadow-sm border border-[var(--color-border)] overflow-hidden">
                 <div className="overflow-x-auto">
                     <table className="w-full text-left min-w-[1000px]">
                         <thead className="bg-gray-50/80">
@@ -374,6 +374,88 @@ function BoletosContent() {
                         </tbody>
                     </table>
                 </div>
+            </div>
+
+            {/* ===== CARDS MOBILE ===== */}
+            <div className="md:hidden space-y-3">
+                {loading ? (
+                    <div className="bg-white rounded-2xl shadow-sm border border-[var(--color-border)] p-6 text-center text-[var(--color-text-muted)]">
+                        Carregando...
+                    </div>
+                ) : paginatedParcelas.length === 0 ? (
+                    <div className="bg-white rounded-2xl shadow-sm border border-[var(--color-border)] p-10 text-center">
+                        <Filter className="w-14 h-14 text-gray-300 mx-auto mb-3" />
+                        <p className="text-[var(--color-text-muted)] text-lg">Nenhum boleto encontrado.</p>
+                    </div>
+                ) : paginatedParcelas.map(p => (
+                    <div
+                        key={p.id}
+                        onClick={() => toggleSelect(p.id)}
+                        className={`bg-white rounded-2xl shadow-sm border-2 transition-colors cursor-pointer ${selectedIds.has(p.id)
+                                ? 'border-[var(--color-primary)] bg-blue-50/30'
+                                : 'border-[var(--color-border)]'
+                            }`}
+                    >
+                        <div className="p-5">
+                            {/* Header row */}
+                            <div className="flex items-start justify-between gap-3 mb-3">
+                                <div className="flex-1 min-w-0">
+                                    <p className="text-lg font-bold text-[var(--color-text)] leading-snug truncate">
+                                        {p.inquilino_nome || '—'}
+                                    </p>
+                                    <p className="text-base text-[var(--color-text-muted)] mt-0.5 truncate">
+                                        {p.imovel_nome || p.imovel_endereco}
+                                        {p.unidade_identificador ? ` · ${p.unidade_identificador}` : ''}
+                                    </p>
+                                </div>
+                                <div className="flex-shrink-0">
+                                    {getStatusBadge(p)}
+                                </div>
+                            </div>
+
+                            {/* Value + date */}
+                            <div className="flex items-center justify-between mb-4">
+                                <p className="text-2xl font-bold text-[var(--color-text)]">
+                                    {formatCurrency(getTotal(p))}
+                                </p>
+                                <p className="text-base text-[var(--color-text-muted)]">
+                                    Venc. {formatDate(p.data_vencimento)}
+                                </p>
+                            </div>
+
+                            {/* Description */}
+                            <p className="text-base text-[var(--color-text-muted)] mb-4">
+                                {p.descricao || `Parcela ${p.numero_parcela}`}
+                            </p>
+
+                            {/* Actions */}
+                            <div className="flex items-center gap-2 border-t border-[var(--color-border)] pt-3">
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); openEditParcela(p); }}
+                                    className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-gray-50 text-gray-700 font-semibold hover:bg-gray-100 transition-colors"
+                                >
+                                    <Pencil className="w-5 h-5" /> Editar
+                                </button>
+                                {p.contrato_id && (
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); openContractDetail(p.contrato_id!); }}
+                                        className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-blue-50 text-blue-700 font-semibold hover:bg-blue-100 transition-colors"
+                                    >
+                                        <FileText className="w-5 h-5" /> Contrato
+                                    </button>
+                                )}
+                                <a
+                                    href={`/contratos/print/boletos?ids=${p.id}`}
+                                    target="_blank"
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-gray-50 text-gray-700 font-semibold hover:bg-gray-100 transition-colors"
+                                >
+                                    <Printer className="w-5 h-5" /> Imprimir
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                ))}
             </div>
 
             <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />

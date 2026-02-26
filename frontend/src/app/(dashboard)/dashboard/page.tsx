@@ -192,16 +192,16 @@ export default function DashboardPage() {
                                 <Link
                                     key={card.title}
                                     href={card.href}
-                                    className={`group relative overflow-hidden rounded-2xl ${card.bgClass} p-6 text-white
+                                    className={`group relative overflow-hidden rounded-2xl ${card.bgClass} p-5 sm:p-6 text-white
                     shadow-lg ${card.shadow} hover:shadow-xl hover:scale-[1.02] transition-all duration-300`}
                                 >
                                     <div className="flex items-start justify-between">
                                         <div>
-                                            <p className="text-sm text-white/80 font-medium">{card.title}</p>
-                                            <p className="text-3xl font-bold mt-1">{card.value}</p>
+                                            <p className="text-base md:text-sm text-white/80 font-medium">{card.title}</p>
+                                            <p className="text-4xl md:text-3xl font-bold mt-1">{card.value}</p>
                                         </div>
                                         <div className="p-2 rounded-xl bg-white/20 backdrop-blur-sm">
-                                            <Icon className="w-6 h-6" />
+                                            <Icon className="w-7 h-7 md:w-6 md:h-6" />
                                         </div>
                                     </div>
                                     <div className="mt-4 flex items-center gap-1 text-sm text-white/70 group-hover:text-white/90">
@@ -293,27 +293,27 @@ export default function DashboardPage() {
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                             <Link
                                 href="/imoveis?new=true"
-                                className="flex items-center gap-3 p-4 rounded-xl border border-[var(--color-border)] hover:border-[var(--color-primary)]
+                                className="flex items-center gap-3 p-5 md:p-4 rounded-xl border border-[var(--color-border)] hover:border-[var(--color-primary)]
                   hover:bg-blue-50/50 transition-all duration-200 group"
                             >
-                                <Building2 className="w-5 h-5 text-[var(--color-text-muted)] group-hover:text-[var(--color-primary)]" />
-                                <span className="text-sm font-medium">Novo Imóvel</span>
+                                <Building2 className="w-6 h-6 md:w-5 md:h-5 text-[var(--color-text-muted)] group-hover:text-[var(--color-primary)]" />
+                                <span className="text-base md:text-sm font-medium">Novo Imóvel</span>
                             </Link>
                             <Link
                                 href="/inquilinos?new=true"
-                                className="flex items-center gap-3 p-4 rounded-xl border border-[var(--color-border)] hover:border-[var(--color-primary)]
+                                className="flex items-center gap-3 p-5 md:p-4 rounded-xl border border-[var(--color-border)] hover:border-[var(--color-primary)]
                   hover:bg-blue-50/50 transition-all duration-200 group"
                             >
-                                <Users className="w-5 h-5 text-[var(--color-text-muted)] group-hover:text-[var(--color-primary)]" />
-                                <span className="text-sm font-medium">Novo Inquilino</span>
+                                <Users className="w-6 h-6 md:w-5 md:h-5 text-[var(--color-text-muted)] group-hover:text-[var(--color-primary)]" />
+                                <span className="text-base md:text-sm font-medium">Novo Inquilino</span>
                             </Link>
                             <Link
                                 href="/contratos?new=true"
-                                className="flex items-center gap-3 p-4 rounded-xl border border-[var(--color-border)] hover:border-[var(--color-primary)]
+                                className="flex items-center gap-3 p-5 md:p-4 rounded-xl border border-[var(--color-border)] hover:border-[var(--color-primary)]
                   hover:bg-blue-50/50 transition-all duration-200 group"
                             >
-                                <FileText className="w-5 h-5 text-[var(--color-text-muted)] group-hover:text-[var(--color-primary)]" />
-                                <span className="text-sm font-medium">Novo Contrato</span>
+                                <FileText className="w-6 h-6 md:w-5 md:h-5 text-[var(--color-text-muted)] group-hover:text-[var(--color-primary)]" />
+                                <span className="text-base md:text-sm font-medium">Novo Contrato</span>
                             </Link>
                         </div>
                     </div>
