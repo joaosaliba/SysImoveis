@@ -177,6 +177,21 @@ export function logout() {
     window.location.href = '/login';
 }
 
+export async function signup(org_nome: string, nome: string, email: string, senha: string) {
+    const res = await fetch(`${API_URL}/auth/signup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ org_nome, nome, email, senha }),
+    });
+
+    if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Erro ao criar organização');
+    }
+
+    return res.json();
+}
+
 export function getUser() {
     if (typeof window === 'undefined') return null;
     const user = localStorage.getItem('user');

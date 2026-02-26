@@ -27,16 +27,20 @@ app.use((req, res, next) => {
 });
 app.use(auditMiddleware);
 
-// Routes
+// Auth routes (signup/login/refresh are public or handle their own tenant context)
 app.use('/api/auth', authRoutes);
-app.use('/api/propriedades', propriedadesRoutes);
-app.use('/api/inquilinos', inquilinosRoutes);
-app.use('/api/contratos', contratosRoutes);
-app.use('/api/dashboard', dashboardRoutes);
-app.use('/api/unidades', unidadesRoutes);
-app.use('/api/relatorios', relatoriosRoutes);
-app.use('/api/perfis', perfisRoutes);
-app.use('/api/auditoria', require('./routes/auditoria'));
+
+// All other routes require tenant context (organizacao_id in JWT)
+const { verifyToken } = require('./middleware/auth');
+const tenantMiddleware = require('./middleware/tenantMiddleware');
+app.use('/api/propriedades', verifyToken, tenantMiddleware, propriedadesRoutes);
+app.use('/api/inquilinos', verifyToken, tenantMiddleware, inquilinosRoutes);
+app.use('/api/contratos', verifyToken, tenantMiddleware, contratosRoutes);
+app.use('/api/dashboard', verifyToken, tenantMiddleware, dashboardRoutes);
+app.use('/api/unidades', verifyToken, tenantMiddleware, unidadesRoutes);
+app.use('/api/relatorios', verifyToken, tenantMiddleware, relatoriosRoutes);
+app.use('/api/perfis', verifyToken, tenantMiddleware, perfisRoutes);
+app.use('/api/auditoria', verifyToken, tenantMiddleware, require('./routes/auditoria'));
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -44,6 +48,6 @@ app.get('/api/health', (req, res) => {
 });
 
 app.listen(PORT, '0.0.0.0', async () => {
-    console.log(`🏢 GestaoImoveis API running on http://0.0.0.0:${PORT}`);
+    console.log(`🏢 GestaoImoveis SaaS API running on http://0.0.0.0:${PORT}`);
     await initAdmin();
 });

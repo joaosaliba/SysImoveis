@@ -12,6 +12,15 @@ async function initAdmin() {
             return;
         }
 
+        // Ensure default organization exists
+        let orgResult = await pool.query("SELECT id FROM organizacoes WHERE slug = 'padrao' LIMIT 1");
+        if (orgResult.rows.length === 0) {
+            orgResult = await pool.query(
+                "INSERT INTO organizacoes (nome, slug) VALUES ('Padrão', 'padrao') RETURNING id"
+            );
+        }
+        const orgId = orgResult.rows[0].id;
+
         // Check if ANY admin exists or if this specific email exists
         const existingAdmin = await pool.query("SELECT id FROM usuarios WHERE is_admin = TRUE OR email = $1 LIMIT 1", [email]);
 
@@ -20,11 +29,13 @@ async function initAdmin() {
             const hashedPassword = await bcrypt.hash(password, 12);
 
             await pool.query(
-                "INSERT INTO usuarios (nome, email, senha_hash, is_admin) VALUES ($1, $2, $3, TRUE)",
-                [name, email, hashedPassword]
+                "INSERT INTO usuarios (nome, email, senha_hash, is_admin, organizacao_id) VALUES ($1, $2, $3, TRUE, $4)",
+                [name, email, hashedPassword, orgId]
             );
             console.log('[SEED] Admin master criado com sucesso.');
         } else {
+            // Ensure existing admin has an org
+            await pool.query("UPDATE usuarios SET organizacao_id = $1 WHERE organizacao_id IS NULL AND is_admin = TRUE", [orgId]);
             console.log('[SEED] Usuário administrador já existe no sistema.');
         }
     } catch (err) {
@@ -33,3 +44,4 @@ async function initAdmin() {
 }
 
 module.exports = { initAdmin };
+

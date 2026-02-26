@@ -1,10 +1,10 @@
 const express = require('express');
 const pool = require('../db/pool');
-const { verifyToken, checkPermission } = require('../middleware/auth');
+const { checkPermission } = require('../middleware/auth');
 const { getPaginationParams, formatPaginatedResponse } = require('../db/pagination');
 
 const router = express.Router();
-router.use(verifyToken);
+// verifyToken + tenantMiddleware applied at server.js level
 
 // List all properties (with optional search and pagination)
 router.get('/', checkPermission('imoveis', 'ver'), async (req, res) => {
@@ -12,14 +12,14 @@ router.get('/', checkPermission('imoveis', 'ver'), async (req, res) => {
         const { search, page, limit } = req.query;
         const { offset, limit: limitNum, page: pageNum } = getPaginationParams(page, limit);
 
-        // Build WHERE clause
-        let whereClause = '';
-        let params = [];
-        let paramIndex = 1;
+        // Build WHERE clause — always filter by org
+        let whereClause = ' WHERE p.organizacao_id = $1';
+        let params = [req.organizacao_id];
+        let paramIndex = 2;
 
         if (search) {
-            whereClause = ` WHERE p.endereco ILIKE $${paramIndex} OR p.cidade ILIKE $${paramIndex} OR p.administrador ILIKE $${paramIndex} OR p.nome ILIKE $${paramIndex}`;
-            params = [`%${search}%`];
+            whereClause += ` AND (p.endereco ILIKE $${paramIndex} OR p.cidade ILIKE $${paramIndex} OR p.administrador ILIKE $${paramIndex} OR p.nome ILIKE $${paramIndex})`;
+            params.push(`%${search}%`);
             paramIndex++;
         }
 
@@ -51,7 +51,7 @@ router.get('/', checkPermission('imoveis', 'ver'), async (req, res) => {
 // Get single property with its units
 router.get('/:id', async (req, res) => {
     try {
-        const propResult = await pool.query('SELECT * FROM propriedades WHERE id = $1', [req.params.id]);
+        const propResult = await pool.query('SELECT * FROM propriedades WHERE id = $1 AND organizacao_id = $2', [req.params.id, req.organizacao_id]);
         if (propResult.rows.length === 0) {
             return res.status(404).json({ error: 'Propriedade não encontrada.' });
         }
@@ -78,10 +78,10 @@ router.post('/', checkPermission('imoveis', 'salvar'), async (req, res) => {
         }
 
         const result = await pool.query(
-            `INSERT INTO propriedades (nome, endereco, numero, complemento, bairro, cidade, uf, cep, administrador, observacoes)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            `INSERT INTO propriedades (nome, endereco, numero, complemento, bairro, cidade, uf, cep, administrador, observacoes, organizacao_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
        RETURNING *`,
-            [nome, endereco, numero, complemento, bairro, cidade, uf, cep, administrador, observacoes]
+            [nome, endereco, numero, complemento, bairro, cidade, uf, cep, administrador, observacoes, req.organizacao_id]
         );
 
         res.status(201).json(result.rows[0]);
@@ -109,8 +109,8 @@ router.put('/:id', checkPermission('imoveis', 'salvar'), async (req, res) => {
         administrador = COALESCE($9, administrador),
         observacoes = COALESCE($10, observacoes),
         updated_at = NOW()
-       WHERE id = $11 RETURNING *`,
-            [nome, endereco, numero, complemento, bairro, cidade, uf, cep, administrador, observacoes, req.params.id]
+       WHERE id = $11 AND organizacao_id = $12 RETURNING *`,
+            [nome, endereco, numero, complemento, bairro, cidade, uf, cep, administrador, observacoes, req.params.id, req.organizacao_id]
         );
 
         if (result.rows.length === 0) {
@@ -127,7 +127,7 @@ router.put('/:id', checkPermission('imoveis', 'salvar'), async (req, res) => {
 // Delete property
 router.delete('/:id', checkPermission('imoveis', 'deletar'), async (req, res) => {
     try {
-        const result = await pool.query('DELETE FROM propriedades WHERE id = $1 RETURNING id', [req.params.id]);
+        const result = await pool.query('DELETE FROM propriedades WHERE id = $1 AND organizacao_id = $2 RETURNING id', [req.params.id, req.organizacao_id]);
         if (result.rows.length === 0) {
             return res.status(404).json({ error: 'Propriedade não encontrada.' });
         }
@@ -160,7 +160,11 @@ router.get('/:id/unidades', async (req, res) => {
 // List ALL units (global)
 router.get('/unidades/all', async (req, res) => {
     try {
-        const result = await pool.query('SELECT * FROM unidades ORDER BY identificador');
+        const result = await pool.query(
+            `SELECT u.* FROM unidades u
+             JOIN propriedades p ON u.propriedade_id = p.id
+             WHERE p.organizacao_id = $1
+             ORDER BY u.identificador`, [req.organizacao_id]);
         res.json(result.rows);
     } catch (err) {
         console.error('List all units error:', err);

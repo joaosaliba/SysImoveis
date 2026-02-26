@@ -310,6 +310,29 @@ MIT
 
 ---
 
-## 👥 Suporte
+## 👥 Fluxo Saas
+```mermaid
+sequenceDiagram
+    participant User
+    participant Frontend
+    participant API
+    participant DB
 
-Para dúvidas ou problemas, abra uma issue no repositório.
+    Note over User,DB: New Organization Registration
+    User->>Frontend: Fills signup form
+    Frontend->>API: POST /api/auth/signup
+    API->>DB: INSERT organizacoes + usuarios
+    API-->>Frontend: 201 Created
+
+    Note over User,DB: Login & Tenant Resolution
+    User->>Frontend: Login with email/password
+    Frontend->>API: POST /api/auth/login
+    API->>DB: SELECT user + org
+    API-->>Frontend: JWT with organizacao_id
+    
+    Note over User,DB: Data Isolation
+    Frontend->>API: GET /api/propriedades (Bearer JWT)
+    API->>API: verifyToken → tenantMiddleware
+    API->>DB: WHERE organizacao_id = $org_id
+    DB-->>API: Org-scoped rows only
+```

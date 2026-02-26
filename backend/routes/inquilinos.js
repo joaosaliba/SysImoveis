@@ -3,12 +3,12 @@ const pool = require('../db/pool');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-const { verifyToken, checkPermission } = require('../middleware/auth');
+const { checkPermission } = require('../middleware/auth');
 const { getPaginationParams, formatPaginatedResponse } = require('../db/pagination');
 const { logAudit } = require('../services/auditService');
 
 const router = express.Router();
-router.use(verifyToken);
+// verifyToken + tenantMiddleware applied at server.js level
 
 // ===== MULTER CONFIG =====
 const UPLOAD_DIR = path.join(__dirname, '..', 'uploads', 'documentos');
@@ -51,19 +51,19 @@ router.get('/', checkPermission('inquilinos', 'ver'), async (req, res) => {
         const { search, page, limit } = req.query;
         const { offset, limit: limitNum, page: pageNum } = getPaginationParams(page, limit);
 
-        let whereClause = '';
-        let params = [];
+        let whereClause = ' WHERE organizacao_id = $1';
+        let params = [req.organizacao_id];
 
         if (search) {
-            whereClause = ` WHERE nome_completo ILIKE $1 OR cpf ILIKE $1`;
-            params = [`%${search}%`];
+            whereClause += ` AND (nome_completo ILIKE $2 OR cpf ILIKE $2)`;
+            params.push(`%${search}%`);
         }
 
         const countQuery = `SELECT COUNT(*) FROM inquilinos${whereClause}`;
         const countResult = await pool.query(countQuery, params);
         const total = parseInt(countResult.rows[0].count);
 
-        const dataQuery = `SELECT * FROM inquilinos ${whereClause} ORDER BY created_at DESC LIMIT $1 OFFSET $2`;
+        const dataQuery = `SELECT * FROM inquilinos ${whereClause} ORDER BY created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
         const dataParams = [...params, limitNum, offset];
         const result = await pool.query(dataQuery, dataParams);
 
@@ -77,7 +77,7 @@ router.get('/', checkPermission('inquilinos', 'ver'), async (req, res) => {
 // Get single tenant
 router.get('/:id', async (req, res) => {
     try {
-        const result = await pool.query('SELECT * FROM inquilinos WHERE id = $1', [req.params.id]);
+        const result = await pool.query('SELECT * FROM inquilinos WHERE id = $1 AND organizacao_id = $2', [req.params.id, req.organizacao_id]);
         if (result.rows.length === 0) {
             return res.status(404).json({ error: 'Inquilino não encontrado.' });
         }
@@ -97,16 +97,16 @@ router.post('/', checkPermission('inquilinos', 'salvar'), async (req, res) => {
             return res.status(400).json({ error: 'CPF e nome completo são obrigatórios.' });
         }
 
-        const existing = await pool.query('SELECT id FROM inquilinos WHERE cpf = $1', [cpf]);
+        const existing = await pool.query('SELECT id FROM inquilinos WHERE cpf = $1 AND organizacao_id = $2', [cpf, req.organizacao_id]);
         if (existing.rows.length > 0) {
             return res.status(409).json({ error: 'CPF já cadastrado.' });
         }
 
         const result = await pool.query(
-            `INSERT INTO inquilinos (cpf, nome_completo, rg, orgao_emissor, uf_rg, telefones, email, observacoes, restricoes)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            `INSERT INTO inquilinos (cpf, nome_completo, rg, orgao_emissor, uf_rg, telefones, email, observacoes, restricoes, organizacao_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
        RETURNING *`,
-            [cpf, nome_completo, rg, orgao_emissor, uf_rg, JSON.stringify(telefones || []), email, observacoes, restricoes]
+            [cpf, nome_completo, rg, orgao_emissor, uf_rg, JSON.stringify(telefones || []), email, observacoes, restricoes, req.organizacao_id]
         );
 
         const novoInquilino = result.rows[0];
@@ -128,7 +128,7 @@ router.put('/:id', checkPermission('inquilinos', 'salvar'), async (req, res) => 
         const { cpf, nome_completo, rg, orgao_emissor, uf_rg, telefones, email, observacoes, restricoes } = req.body;
 
         // Fetch old data for audit
-        const oldData = await pool.query('SELECT nome_completo, cpf, email, restricoes FROM inquilinos WHERE id = $1', [req.params.id]);
+        const oldData = await pool.query('SELECT nome_completo, cpf, email, restricoes FROM inquilinos WHERE id = $1 AND organizacao_id = $2', [req.params.id, req.organizacao_id]);
 
         const result = await pool.query(
             `UPDATE inquilinos SET
@@ -142,8 +142,8 @@ router.put('/:id', checkPermission('inquilinos', 'salvar'), async (req, res) => 
         observacoes = COALESCE($8, observacoes),
         restricoes = COALESCE($9, restricoes),
         updated_at = NOW()
-       WHERE id = $10 RETURNING *`,
-            [cpf, nome_completo, rg, orgao_emissor, uf_rg, telefones ? JSON.stringify(telefones) : null, email, observacoes, restricoes, req.params.id]
+       WHERE id = $10 AND organizacao_id = $11 RETURNING *`,
+            [cpf, nome_completo, rg, orgao_emissor, uf_rg, telefones ? JSON.stringify(telefones) : null, email, observacoes, restricoes, req.params.id, req.organizacao_id]
         );
 
         if (result.rows.length === 0) {
@@ -171,7 +171,7 @@ router.put('/:id', checkPermission('inquilinos', 'salvar'), async (req, res) => 
 router.delete('/:id', checkPermission('inquilinos', 'deletar'), async (req, res) => {
     try {
         // Fetch data before delete for audit
-        const oldData = await pool.query('SELECT nome_completo, cpf FROM inquilinos WHERE id = $1', [req.params.id]);
+        const oldData = await pool.query('SELECT nome_completo, cpf FROM inquilinos WHERE id = $1 AND organizacao_id = $2', [req.params.id, req.organizacao_id]);
 
         // Also delete files from disk
         const docs = await pool.query('SELECT nome_arquivo FROM inquilino_documentos WHERE inquilino_id = $1', [req.params.id]);
@@ -180,7 +180,7 @@ router.delete('/:id', checkPermission('inquilinos', 'deletar'), async (req, res)
             if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
         }
 
-        const result = await pool.query('DELETE FROM inquilinos WHERE id = $1 RETURNING id', [req.params.id]);
+        const result = await pool.query('DELETE FROM inquilinos WHERE id = $1 AND organizacao_id = $2 RETURNING id', [req.params.id, req.organizacao_id]);
         if (result.rows.length === 0) {
             return res.status(404).json({ error: 'Inquilino não encontrado.' });
         }
@@ -207,7 +207,7 @@ router.delete('/:id', checkPermission('inquilinos', 'deletar'), async (req, res)
 router.post('/:id/documentos', checkPermission('inquilinos', 'salvar'), upload.array('arquivos', 5), async (req, res) => {
     try {
         // Verify tenant exists
-        const tenant = await pool.query('SELECT id FROM inquilinos WHERE id = $1', [req.params.id]);
+        const tenant = await pool.query('SELECT id FROM inquilinos WHERE id = $1 AND organizacao_id = $2', [req.params.id, req.organizacao_id]);
         if (tenant.rows.length === 0) {
             // Clean up uploaded files
             for (const f of req.files) {

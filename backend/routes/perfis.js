@@ -1,10 +1,10 @@
 const express = require('express');
 const pool = require('../db/pool');
-const { verifyToken, checkAdmin } = require('../middleware/auth');
+const { checkAdmin } = require('../middleware/auth');
 const { getPaginationParams, formatPaginatedResponse } = require('../db/pagination');
 
 const router = express.Router();
-router.use(verifyToken);
+// verifyToken + tenantMiddleware applied at server.js level
 router.use(checkAdmin);
 
 // ============================================
@@ -60,7 +60,7 @@ router.post('/sync-all', async (req, res) => {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
-        const perfis = await client.query('SELECT id FROM perfis');
+        const perfis = await client.query('SELECT id FROM perfis WHERE organizacao_id = $1', [req.organizacao_id]);
         for (const p of perfis.rows) {
             await syncPermissoes(client, p.id);
         }
@@ -81,15 +81,15 @@ router.get('/', async (req, res) => {
         const { page, limit, search } = req.query;
         const { offset, limit: limitNum, page: pageNum } = getPaginationParams(page, limit);
 
-        const conditions = [];
-        const params = [];
+        const conditions = ['p.organizacao_id = $1'];
+        const params = [req.organizacao_id];
 
         if (search) {
             params.push(`%${search}%`);
             conditions.push(`(p.nome ILIKE $${params.length} OR p.descricao ILIKE $${params.length})`);
         }
 
-        const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+        const where = `WHERE ${conditions.join(' AND ')}`;
 
         const countResult = await pool.query(`SELECT COUNT(*) FROM perfis p ${where}`, params);
         const total = parseInt(countResult.rows[0].count);
@@ -114,7 +114,7 @@ router.get('/', async (req, res) => {
 // GET /api/perfis/:id - detalhe do perfil com permissões (auto-sync)
 router.get('/:id', async (req, res) => {
     try {
-        const perfilResult = await pool.query('SELECT * FROM perfis WHERE id = $1', [req.params.id]);
+        const perfilResult = await pool.query('SELECT * FROM perfis WHERE id = $1 AND organizacao_id = $2', [req.params.id, req.organizacao_id]);
         if (perfilResult.rows.length === 0) {
             return res.status(404).json({ error: 'Perfil não encontrado.' });
         }
@@ -149,8 +149,8 @@ router.post('/', async (req, res) => {
         }
 
         const perfilResult = await client.query(
-            'INSERT INTO perfis (nome, descricao) VALUES ($1, $2) RETURNING *',
-            [nome, descricao || null]
+            'INSERT INTO perfis (nome, descricao, organizacao_id) VALUES ($1, $2, $3) RETURNING *',
+            [nome, descricao || null, req.organizacao_id]
         );
         const perfil = perfilResult.rows[0];
 
@@ -241,7 +241,7 @@ router.put('/:id', async (req, res) => {
 // DELETE /api/perfis/:id - remover perfil
 router.delete('/:id', async (req, res) => {
     try {
-        const result = await pool.query('DELETE FROM perfis WHERE id = $1 RETURNING id, nome', [req.params.id]);
+        const result = await pool.query('DELETE FROM perfis WHERE id = $1 AND organizacao_id = $2 RETURNING id, nome', [req.params.id, req.organizacao_id]);
         if (result.rows.length === 0) {
             return res.status(404).json({ error: 'Perfil não encontrado.' });
         }

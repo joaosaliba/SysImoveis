@@ -1,11 +1,11 @@
 const express = require('express');
 const pool = require('../db/pool');
-const { verifyToken, checkPermission } = require('../middleware/auth');
+const { checkPermission } = require('../middleware/auth');
 const { getPaginationParams, formatPaginatedResponse } = require('../db/pagination');
 const { logAudit } = require('../services/auditService');
 
 const router = express.Router();
-router.use(verifyToken);
+// verifyToken + tenantMiddleware applied at server.js level
 
 const isValidUUID = (id) => /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(id);
 const isValidDate = (d) => !isNaN(Date.parse(d));
@@ -71,9 +71,9 @@ router.get('/', checkPermission('contratos', 'ver'), async (req, res) => {
         const { page, limit, status, imovel_id, inquilino_id } = req.query;
         const { offset, limit: limitNum, page: pageNum } = getPaginationParams(page, limit);
 
-        let whereClause = 'WHERE 1=1';
-        let params = [];
-        let paramIndex = 1;
+        let whereClause = 'WHERE c.organizacao_id = $1';
+        let params = [req.organizacao_id];
+        let paramIndex = 2;
 
         if (status && status !== 'todos') {
             if (status === 'encerrado') {
@@ -138,8 +138,8 @@ router.get('/:id', async (req, res) => {
       JOIN inquilinos i ON c.inquilino_id = i.id
       JOIN unidades u ON c.unidade_id = u.id
       JOIN propriedades p ON u.propriedade_id = p.id
-      WHERE c.id = $1
-    `, [req.params.id]);
+      WHERE c.id = $1 AND c.organizacao_id = $2
+    `, [req.params.id, req.organizacao_id]);
 
         if (contractResult.rows.length === 0) {
             return res.status(404).json({ error: 'Contrato não encontrado.' });
@@ -179,7 +179,7 @@ router.post('/:id/renovar', async (req, res) => {
         }
 
         // 1. Get current contract
-        const contractRes = await client.query('SELECT * FROM contratos WHERE id = $1', [contratoId]);
+        const contractRes = await client.query('SELECT * FROM contratos WHERE id = $1 AND organizacao_id = $2', [contratoId, req.organizacao_id]);
         if (contractRes.rows.length === 0) {
             await client.query('ROLLBACK');
             return res.status(404).json({ error: 'Contrato não encontrado.' });
@@ -259,15 +259,17 @@ router.post('/', checkPermission('contratos', 'salvar'), async (req, res) => {
             `INSERT INTO contratos (
                 inquilino_id, unidade_id, data_inicio, data_fim, qtd_ocupantes, 
                 valor_inicial, dia_vencimento, observacoes_contrato,
-                valor_iptu, valor_agua, valor_luz, valor_outros, desconto_pontualidade
+                valor_iptu, valor_agua, valor_luz, valor_outros, desconto_pontualidade,
+                organizacao_id
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
             RETURNING *`,
             [
                 inquilino_id, unidade_id, data_inicio, data_fim, qtd_ocupantes || 1,
                 valor_inicial, dia_vencimento, observacoes_contrato,
                 valor_iptu || 0, valor_agua || 0, valor_luz || 0, valor_outros || 0,
-                desconto_pontualidade || 0
+                desconto_pontualidade || 0,
+                req.organizacao_id
             ]
         );
 
@@ -285,14 +287,16 @@ router.post('/', checkPermission('contratos', 'salvar'), async (req, res) => {
                     contrato_id, unidade_id, inquilino_id, numero_parcela, 
                     periodo_inicio, periodo_fim, valor_base, 
                     valor_iptu, valor_agua, valor_luz, valor_outros,
-                    desconto_pontualidade, data_vencimento, status_pagamento, descricao
+                    desconto_pontualidade, data_vencimento, status_pagamento, descricao,
+                    organizacao_id
                 )
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
                 [
                     contrato.id, unidade_id, inquilino_id, p.numero_parcela,
                     p.periodo_inicio, p.periodo_fim, p.valor_base,
                     p.valor_iptu, p.valor_agua, p.valor_luz, p.valor_outros,
-                    p.desconto_pontualidade, p.data_vencimento, p.status_pagamento, p.descricao
+                    p.desconto_pontualidade, p.data_vencimento, p.status_pagamento, p.descricao,
+                    req.organizacao_id
                 ]
             );
         }
@@ -360,11 +364,11 @@ router.put('/:id', checkPermission('contratos', 'salvar'), async (req, res) => {
         valor_outros = COALESCE($10, valor_outros),
         desconto_pontualidade = COALESCE($11, desconto_pontualidade),
         updated_at = NOW()
-       WHERE id = $12 RETURNING *`,
+       WHERE id = $12 AND organizacao_id = $13 RETURNING *`,
             [
                 data_inicio, data_fim, qtd_ocupantes, valor_inicial, dia_vencimento, observacoes_contrato,
                 valor_iptu, valor_agua, valor_luz, valor_outros, desconto_pontualidade,
-                req.params.id
+                req.params.id, req.organizacao_id
             ]
         );
 
@@ -415,8 +419,8 @@ router.patch('/:id/encerrar', async (req, res) => {
         await client.query('BEGIN');
 
         const result = await client.query(
-            `UPDATE contratos SET status_encerrado = true, updated_at = NOW() WHERE id = $1 RETURNING *`,
-            [req.params.id]
+            `UPDATE contratos SET status_encerrado = true, updated_at = NOW() WHERE id = $1 AND organizacao_id = $2 RETURNING *`,
+            [req.params.id, req.organizacao_id]
         );
 
         if (result.rows.length === 0) {
@@ -455,7 +459,7 @@ router.patch('/:id/encerrar', async (req, res) => {
 // Delete contract
 router.delete('/:id', checkPermission('contratos', 'deletar'), async (req, res) => {
     try {
-        const result = await pool.query('DELETE FROM contratos WHERE id = $1 RETURNING id', [req.params.id]);
+        const result = await pool.query('DELETE FROM contratos WHERE id = $1 AND organizacao_id = $2 RETURNING id', [req.params.id, req.organizacao_id]);
         if (result.rows.length === 0) {
             return res.status(404).json({ error: 'Contrato não encontrado.' });
         }
@@ -498,14 +502,14 @@ router.post('/parcelas/avulso', checkPermission('boletos', 'salvar'), async (req
             `INSERT INTO contrato_parcelas (
                 contrato_id, unidade_id, inquilino_id, descricao, data_vencimento,
                 valor_base, valor_iptu, valor_agua, valor_luz, valor_outros,
-                observacoes, status_pagamento
+                observacoes, status_pagamento, organizacao_id
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'pendente')
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'pendente', $12)
             RETURNING *`,
             [
                 contrato_id, unidade_id, inquilino_id, descricao, data_vencimento,
                 valor_base || 0, valor_iptu || 0, valor_agua || 0, valor_luz || 0, valor_outros || 0,
-                observacoes
+                observacoes, req.organizacao_id
             ]
         );
 
@@ -534,11 +538,11 @@ router.get('/parcelas/filtro', checkPermission('boletos', 'ver'), async (req, re
             LEFT JOIN inquilinos i ON cp.inquilino_id = i.id
             LEFT JOIN unidades u ON cp.unidade_id = u.id
             LEFT JOIN propriedades p ON u.propriedade_id = p.id
-            WHERE 1=1
+            WHERE cp.organizacao_id = $1
         `;
 
-        const params = [];
-        let paramIndex = 1;
+        const params = [req.organizacao_id];
+        let paramIndex = 2;
 
 
         if (dt_inicio && isValidDate(dt_inicio)) {
@@ -597,8 +601,8 @@ router.get('/parcelas/:id', async (req, res) => {
             LEFT JOIN inquilinos i ON cp.inquilino_id = i.id OR c.inquilino_id = i.id
             LEFT JOIN unidades u ON cp.unidade_id = u.id OR c.unidade_id = u.id
             LEFT JOIN propriedades p ON u.propriedade_id = p.id
-            WHERE cp.id = $1
-        `, [req.params.id]);
+            WHERE cp.id = $1 AND cp.organizacao_id = $2
+        `, [req.params.id, req.organizacao_id]);
 
         if (result.rows.length === 0) {
             return res.status(404).json({ error: 'Parcela não encontrada.' });
@@ -646,11 +650,11 @@ router.patch('/parcelas/:parcelaId', checkPermission('boletos', 'salvar'), async
         status_pagamento = COALESCE($9, status_pagamento),
         observacoes = COALESCE($10, observacoes),
         updated_at = NOW()
-       WHERE id = $11 RETURNING *`,
+       WHERE id = $11 AND organizacao_id = $12 RETURNING *`,
             [
                 valor_base, valor_iptu, valor_agua, valor_luz, valor_outros,
                 desconto_pontualidade, data_pagamento, valor_pago, status_pagamento, observacoes,
-                req.params.parcelaId
+                req.params.parcelaId, req.organizacao_id
             ]
         );
 
@@ -685,7 +689,7 @@ router.patch('/parcelas/:parcelaId', checkPermission('boletos', 'salvar'), async
 // Delete installment (manually generated or otherwise)
 router.delete('/parcelas/:id', checkPermission('boletos', 'deletar'), async (req, res) => {
     try {
-        const result = await pool.query('DELETE FROM contrato_parcelas WHERE id = $1 RETURNING id', [req.params.id]);
+        const result = await pool.query('DELETE FROM contrato_parcelas WHERE id = $1 AND organizacao_id = $2 RETURNING id', [req.params.id, req.organizacao_id]);
         if (result.rows.length === 0) {
             return res.status(404).json({ error: 'Parcela não encontrada.' });
         }
@@ -773,7 +777,7 @@ router.post('/:id/parcelas/gerar', async (req, res) => {
         const { mode = 'next', data_vencimento, valor, count } = req.body; // mode: 'next', 'manual', 'all'
 
         // 1. Fetch contract
-        const contractRes = await client.query('SELECT * FROM contratos WHERE id = $1', [contratoId]);
+        const contractRes = await client.query('SELECT * FROM contratos WHERE id = $1 AND organizacao_id = $2', [contratoId, req.organizacao_id]);
         if (contractRes.rows.length === 0) {
             await client.query('ROLLBACK');
             return res.status(404).json({ error: 'Contrato não encontrado.' });
@@ -795,15 +799,15 @@ router.post('/:id/parcelas/gerar', async (req, res) => {
                     contrato_id, unidade_id, inquilino_id, numero_parcela, 
                     periodo_inicio, periodo_fim, valor_base, 
                     valor_iptu, valor_agua, valor_luz, valor_outros,
-                    desconto_pontualidade, data_vencimento, status_pagamento, descricao
+                    desconto_pontualidade, data_vencimento, status_pagamento, descricao, organizacao_id
                 )
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'pendente', $14)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'pendente', $14, $15)
                 RETURNING *`,
                 [
                     contrato.id, contrato.unidade_id, contrato.inquilino_id, numero,
                     pInicio, pFim, valorBase,
                     contrato.valor_iptu, contrato.valor_agua, contrato.valor_luz, contrato.valor_outros,
-                    0, dtVenc, descricao
+                    0, dtVenc, descricao, req.organizacao_id
                 ]
             );
             return res.rows[0];

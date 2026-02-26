@@ -1,11 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../db/pool');
-const { verifyToken, checkAdmin } = require('../middleware/auth');
+const { checkAdmin } = require('../middleware/auth');
 const { getPaginationParams, formatPaginatedResponse } = require('../db/pagination');
 
-// Middleware to ensure user is authenticated and is admin
-router.use(verifyToken);
+// verifyToken + tenantMiddleware applied at server.js level
 router.use(checkAdmin);
 
 /**
@@ -24,8 +23,8 @@ router.get('/', async (req, res) => {
             data_fim
         } = req.query;
 
-        let queryParams = [];
-        let whereClauses = [];
+        let queryParams = [req.organizacao_id];
+        let whereClauses = ['a.organizacao_id = $1'];
 
         if (usuario_id) {
             queryParams.push(usuario_id);
@@ -92,9 +91,9 @@ router.get('/', async (req, res) => {
  */
 router.get('/filtros', async (req, res) => {
     try {
-        const usuariosQuery = pool.query(`SELECT id, nome FROM usuarios ORDER BY nome ASC`);
-        const acoesQuery = pool.query(`SELECT DISTINCT acao FROM auditoria WHERE acao IS NOT NULL ORDER BY acao ASC`);
-        const entidadesQuery = pool.query(`SELECT DISTINCT entidade FROM auditoria WHERE entidade IS NOT NULL ORDER BY entidade ASC`);
+        const usuariosQuery = pool.query(`SELECT id, nome FROM usuarios WHERE organizacao_id = $1 ORDER BY nome ASC`, [req.organizacao_id]);
+        const acoesQuery = pool.query(`SELECT DISTINCT acao FROM auditoria WHERE acao IS NOT NULL AND organizacao_id = $1 ORDER BY acao ASC`, [req.organizacao_id]);
+        const entidadesQuery = pool.query(`SELECT DISTINCT entidade FROM auditoria WHERE entidade IS NOT NULL AND organizacao_id = $1 ORDER BY entidade ASC`, [req.organizacao_id]);
 
         const [usuariosResult, acoesResult, entidadesResult] = await Promise.all([
             usuariosQuery,

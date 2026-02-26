@@ -38,7 +38,7 @@ export default function Sidebar() {
     const [adminMenuOpen, setAdminMenuOpen] = useState(false);
     const router = useRouter();
     const pathname = usePathname();
-    const [user, setUser] = useState<{ nome: string } | null>(null);
+    const [user, setUser] = useState<{ nome: string; organizacao_nome?: string } | null>(null);
     const [admin, setAdmin] = useState(false);
 
     useEffect(() => {
@@ -76,9 +76,14 @@ export default function Sidebar() {
                 {/* Header */}
                 <div className="flex items-center justify-between p-4 border-b border-white/10">
                     {!collapsed && (
-                        <h1 className="text-lg font-bold tracking-tight">
-                            Sys<span className="text-blue-400">Imóveis</span>
-                        </h1>
+                        <div>
+                            <h1 className="text-lg font-bold tracking-tight">
+                                Sys<span className="text-blue-400">Imóveis</span>
+                            </h1>
+                            {user?.organizacao_nome && (
+                                <p className="text-xs text-white/50 truncate mt-0.5">{user.organizacao_nome}</p>
+                            )}
+                        </div>
                     )}
                     <button
                         onClick={() => setCollapsed(!collapsed)}

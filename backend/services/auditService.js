@@ -15,11 +15,12 @@ async function logAudit(req, acao, entidade, entidade_id = null, dados_antigos =
     try {
         const usuario_id = req.user ? req.user.id : null;
         const ip = req.ip || req.connection?.remoteAddress || '127.0.0.1';
+        const organizacao_id = req.organizacao_id || (req.user ? req.user.organizacao_id : null);
 
         await pool.query(
             `INSERT INTO auditoria 
-            (usuario_id, acao, entidade, entidade_id, dados_antigos, dados_novos, detalhes, ip)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+            (usuario_id, acao, entidade, entidade_id, dados_antigos, dados_novos, detalhes, ip, organizacao_id)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
             [
                 usuario_id,
                 acao,
@@ -28,7 +29,8 @@ async function logAudit(req, acao, entidade, entidade_id = null, dados_antigos =
                 dados_antigos,
                 dados_novos,
                 detalhes,
-                ip
+                ip,
+                organizacao_id
             ]
         );
     } catch (error) {
